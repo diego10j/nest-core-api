@@ -139,6 +139,9 @@ Tu trabajo es detectar CÓMO se fijó realmente el precio y proponer la configur
    - Regla comercial: las cantidades mínimas (las más pequeñas) llevan por lo general el MAYOR margen, y el margen baja a
      medida que sube la cantidad. Por eso NO fusiones las cantidades pequeñas con bandas más grandes: conserva sus propios
      escalones aunque tengan pocas ventas, siempre que su margen sea claramente más alto que el de la banda siguiente.
+   - Si varias cantidades seguidas tienen el mismo precio fijo, NO las separes en cantidades exactas: usa un solo rango
+     con patron precio_fijo que las cubra. Una cantidad exacta solo se justifica si su precio difiere del rango que la
+     contiene.
    - Revisa SIEMPRE una por una las 3 o 4 cantidades más pequeñas de "niveles" con 3 o más ventas. Si una tiene precio
      estable (pct_precio_estable alto) y distinto al de la cantidad siguiente, dale su propia configuración como cantidad
      exacta (exacta=true, patron precio_fijo); si varias son así, una configuración por cada cantidad. Si en cambio su
@@ -627,6 +630,28 @@ export class ConfigPreciosIaService {
     const calcularTodos = () =>
       tiers.map((t) => calcular(t, tiers)).filter((p): p is ConfigPrecioPropuesta => p !== null);
     let propuestas = calcularTodos();
+
+    // Una cantidad exacta redundante (su precio fijo ya lo cubre un rango con el mismo precio) se elimina.
+    const redundantes = propuestas.filter(
+      (e) =>
+        e.exacta &&
+        e.modo === 'fijo' &&
+        propuestas.some(
+          (r) =>
+            !r.exacta &&
+            r.modo === 'fijo' &&
+            r.ide_cncfp === e.ide_cncfp &&
+            e.rango1 >= r.rango1 &&
+            (r.rango2 === null || e.rango1 <= r.rango2) &&
+            Math.abs(r.valor - e.valor) / e.valor <= 0.01,
+        ),
+    );
+    if (redundantes.length > 0) {
+      tiers = tiers.filter(
+        (t) => !redundantes.some((e) => e.ide_cncfp === t.ide_cncfp && e.rango1 === t.desde && t.exacta),
+      );
+      propuestas = calcularTodos();
+    }
 
     // Un rango respaldado por menos de 3 ventas no es un escalón: se fusiona con el vecino y se recalcula.
     for (;;) {
