@@ -168,6 +168,8 @@ export class DiferenciasConciliacionService {
                 valor: b.erp[0].valor,
                 legado: b.erp[0].conciliado_legado,
                 repetido: tieneCodigo(b, 'DUPLICADO'),
+                /** Otro movimiento del ERP con el mismo número ya está cruzado con el banco: posible registro duplicado. */
+                documentoRepetido: b.alertas.find((a) => a.codigo === 'DOCUMENTO_REPETIDO')?.texto ?? null,
             }));
         const conDiferencia = bloques
             .filter((b) => b.tipo === 'CRUCE' && (tieneCodigo(b, 'DIFERENCIA') || tieneCodigo(b, 'SIGNO')))

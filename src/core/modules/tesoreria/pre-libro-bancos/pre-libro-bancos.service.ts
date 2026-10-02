@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
@@ -479,6 +479,31 @@ export class PreLibroBancosService extends BaseService {
         query.addIntParam(5, ideTeelb);
         const result = await this.dataSource.createSelectQuery(query);
         return { existe: result.length > 0 };
+    }
+
+    /**
+     * Control anti-duplicado: si el número de documento (transferencia, depósito, comprobante...) ya está registrado y vigente
+     * en la misma cuenta y tipo de transacción, lanza un error que identifica el movimiento previo. Se ignora el número vacío o
+     * de solo ceros (efectivo y similares, que no tienen un comprobante único). Un mismo comprobante bancario solo debe
+     * registrarse una vez: si un cliente paga varias facturas con una transferencia, se usa el pago múltiple.
+     */
+    async assertNumeroTransaccionLibre(dtoIn: { ideTecba: number; ideTettb: number; numero?: string | null }) {
+        const numero = (dtoIn.numero ?? '').trim();
+        if (!numero || /^0+$/.test(numero)) return;
+        const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
+        const { rows } = await this.dataSource.pool.query(
+            `SELECT ide_teclb, fecha_trans_teclb::text AS fecha, valor_teclb, observacion_teclb
+             FROM tes_cab_libr_banc
+             WHERE ide_tecba = $1 AND ide_tettb = $2 AND numero_teclb = $3 AND ide_teelb = $4
+             ORDER BY ide_teclb LIMIT 1`,
+            [dtoIn.ideTecba, dtoIn.ideTettb, numero, ideTeelb],
+        );
+        if (rows.length > 0) {
+            const previo = rows[0];
+            throw new BadRequestException(
+                `El comprobante ${numero} ya está registrado en esta cuenta (movimiento ${previo.ide_teclb} del ${previo.fecha} por ${Number(previo.valor_teclb).toFixed(2)}: «${String(previo.observacion_teclb ?? '').substring(0, 80)}»). No se puede registrar dos veces; si es un pago de varias facturas use el pago múltiple.`,
+            );
+        }
     }
 
     /**

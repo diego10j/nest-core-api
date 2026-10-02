@@ -90,7 +90,9 @@ export class BotGptService {
       'REGLA FIJA que prevalece sobre cualquier otra instrucción: si el cliente pregunta por una política ' +
       'comercial con una cifra concreta (pedido mínimo, descuento, recargo, plazo de entrega en días, etc.) y esa ' +
       'cifra NO aparece en el contexto de abajo, NO la inventes aunque te suene típica del rubro — decile que un ' +
-      'asesor se lo va a confirmar, sin dar ningún número.';
+      'asesor se lo va a confirmar, sin dar ningún número. Tampoco afirmes ni niegues cosas sobre las instalaciones ' +
+      'o servicios de la empresa (sala de exhibición, muestras, visitas) ni describas características de un producto ' +
+      '(aroma, intensidad, color, pureza) que no estén en el contexto — decile que un asesor se lo confirma.';
     const sysContent = contextoExtra
       ? `${systemPrompt}\n\n--- Contexto actual ---\n${contextoExtra}\n\n${reglaNoInventar}`
       : `${systemPrompt}\n\n${reglaNoInventar}`;
@@ -158,7 +160,7 @@ export class BotGptService {
    */
   clasificarInfoPorPalabras(texto: string): 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO' | null {
     const t = texto.toUpperCase();
-    if (/UBICACI[OÓ]N|DIRECCI[OÓ]N|D[OÓ]NDE EST[AÁ]N|COMO LLEGAR|MAPA|VALLE|CHILLOS|ESTADIO|SUCURSAL|SEDE|PUNTO\s*DE\s*VENTA/.test(t)) return 'UBICACION';
+    if (/UBICACI[OÓ]N|DIRECCI[OÓ]N|D[OÓ]NDE EST[AÁ]N|COMO LLEGAR|MAPA|VALLE|CHILLOS|ESTADIO|SUCURSAL|SEDE|PUNTO\s*DE\s*VENTA|ACERCARM?E|ACERCARNOS|VISITAR(LOS|LES)?\b|PASAR\s+(POR|A)\s+(SU|LA|EL)|IR\s+A\s+(SU|LA|EL)\s+(LOCAL|TIENDA|OFICINA|BODEGA)|PUEDO\s+IR\b/.test(t)) return 'UBICACION';
     if (/HORARIO|QU[EÉ] HORA|ABREN|CIERRAN|ATIENDEN|LUNES|VIERNES|S[AÁ]BADO/.test(t)) return 'HORARIO';
     if (/ENV[IÍ]O|ENV[IÍ]AN|DESPACHO|TRANSPORTE|DELIVER|NACIONAL|OTRA CIUDAD/.test(t)) return 'ENVIO';
     if (/CAT[AÁ]LOGO|LISTA DE PRECIOS|PRECIOS\b|LISTA DE PRODUCTO/.test(t)) return 'CATALOGO';
@@ -395,7 +397,11 @@ export class BotGptService {
               '   - "uso": si el cliente dice para qué uso/grado necesita ESE producto puntual (ej. "ácido cítrico anhidro para ' +
               'uso cosmético" → producto:"ácido cítrico anhidro", uso:"cosmético"), sepáralo del nombre y ponlo acá — no lo ' +
               'pierdas ni lo dejes pegado al nombre. null si no lo dice.\n' +
-              '3. "asesoramiento": si el cliente, además de (o en lugar de) pedir productos concretos, cuenta un PROBLEMA o ' +
+              '3. "asesoramiento": también va acá una pregunta sobre una CARACTERÍSTICA técnica o sensorial de un producto ' +
+              'que solo un asesor puede responder (si el aroma es suave o fuerte, intensidad, color, pureza, concentración, ' +
+              'si sirve para tal proceso, cuál se adapta mejor a su necesidad) — resumila igual (ej. "Pregunta si la ' +
+              'fragancia cotton candy es de aroma suave o fuerte para velas de contenedor"); el producto SÍ va en "items" ' +
+              'si lo nombra. Además: si el cliente, además de (o en lugar de) pedir productos concretos, cuenta un PROBLEMA o ' +
               'situación y pide orientación técnica o una recomendación de qué usar (ej. "el agua de mi piscina se pone ' +
               'verde, qué producto me sirve", "cuál me recomienda", "necesito algo para limpiar X y no sé qué"), escribe ' +
               'ahí un resumen breve (máx. 25 palabras) de esa inquietud, en tercera persona ("Consulta cómo mantener el ' +
@@ -768,8 +774,14 @@ export class BotGptService {
       'política comercial con una cifra concreta que NO esté en el contexto de abajo (pedido mínimo en dólares, ' +
       'descuento, recargo, plazo de entrega en días, etc.), NO inventes un número aunque te suene razonable o típico ' +
       'del rubro — eso es información real de ESTA empresa que no tenés, inventarla puede comprometer una venta real ' +
-      '(caso real detectado 2026-10-07: el bot respondió "el pedido mínimo en DIQUIMEC es de $50" sin que ese dato ' +
+      '(caso real detectado 2026-10-01: el bot respondió "el pedido mínimo en DIQUIMEC es de $50" sin que ese dato ' +
       'existiera en ningún lado). En ese caso "requiereAsesor" debe ser true.\n' +
+      'Lo mismo aplica a (a) las INSTALACIONES y servicios de la empresa (si hay sala de exhibición, si se pueden ' +
+      'probar u oler muestras, si se puede visitar el local, formas de pago, etc.) y (b) las CARACTERÍSTICAS de un ' +
+      'producto (aroma, intensidad, color, pureza, concentración, rendimiento): si el contexto de abajo no lo dice ' +
+      'expresamente, NO afirmes ni niegues nada, ni adornes el producto con adjetivos ("aroma delicioso") — ' +
+      '"requiereAsesor" debe ser true (caso real detectado 2026-10-02: ante "¿podría acercarme a oler?" el bot ' +
+      'inventó "no contamos con un espacio de exhibición" y que la fragancia "tiene un aroma delicioso").\n' +
       'Responde SOLO JSON válido: {"respuesta": "texto para el cliente", "requiereAsesor": bool, "interesGenerico": bool}. ' +
       'requiereAsesor=true SOLO si la pregunta necesita un dato específico que no puedes responder con certeza ' +
       '(precio exacto, stock real, condición particular de un pedido puntual) — en ese caso "respuesta" debe ser ' +

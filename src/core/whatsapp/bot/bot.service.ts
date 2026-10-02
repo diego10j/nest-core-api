@@ -1568,11 +1568,44 @@ export class BotService implements OnModuleInit {
       };
     }
 
+    // Pide el catálogo (o ubicación/horario/envío) a mitad de la recopilación: se le responde
+    // y luego se sigue con lo pendiente — antes solo se repetía la pregunta de cantidad,
+    // ignorando el pedido (caso real detectado 2026-10-02: "quiero conocer el catálogo que
+    // disponen" se contestó con "solo me falta la cantidad"). Para CATALOGO se exige que diga
+    // "catálogo" explícito: la palabra suelta "precios" no alcanza.
+    const tipoInfoMid = this.botGpt.clasificarInfoPorPalabras(texto);
+    if (tipoInfoMid && (tipoInfoMid !== 'CATALOGO' || /cat[aá]logo/i.test(texto))) {
+      await this.responderInfo(ideEmpr, waId, tipoInfoMid, nombreEmpresa, config);
+    }
+
+    // Pide orientación sobre cuál producto le conviene ("para saber cuál se puede adaptar
+    // mejor a la necesidad que estoy buscando"): el bot no la responde — se anota para el
+    // asesor (y el cliente recibe el aviso de que se le responderá). Si además no dio
+    // cantidad, no se le insiste: no puede decir cuánto necesita de algo que aún no sabe cuál
+    // es — queda "cantidad por definir con el asesor" y el flujo avanza (caso real detectado
+    // 2026-10-02: cliente de Pronaca buscando un antiespumante, el bot solo repetía la
+    // pregunta de cantidad).
+    const pideOrientacion = /\bpara\s+saber\s+cu[aá]l\b|\bcu[aá]l\b[^.!?]{0,40}\b(adapt\w*|conviene|recomiend\w*|sirve|ideal|mejor)\b|\bnecesito\s+(asesor[ií]a|orientaci[oó]n)\b|\bqu[eé]\s+(tipo|producto)\s+(me\s+)?(recomiend\w*|conviene|sirve)/i.test(texto);
+    const hayCantidadEnTexto = /\d/.test(texto) || /cantidad\s+m[ií]nima/i.test(texto);
+    if (pideOrientacion) {
+      datos = {
+        ...datos,
+        consultaAsesoramiento: [datos.consultaAsesoramiento, `Pide orientación sobre qué producto le conviene: "${texto.trim()}"`].filter(Boolean).join(' | '),
+      };
+    }
+
+    // Otro producto mencionado a mitad de la recopilación (ej. "cera de salvado de arroz"
+    // mientras se pedía la cantidad de la cera de candelilla): se detecta en paralelo con la
+    // extracción de cantidades y se deja como nota para el asesor — antes se perdía en
+    // silencio (caso real detectado 2026-10-02). Se omite si el mensaje describe un producto
+    // final ("preparar 14 litros de shampoo"), que no es un ítem más.
+    const hayPalabras = /[a-záéíóúñ]{4,}/i.test(texto) && texto.trim().length >= 8;
+
     // Ciudad NO se pide acá: es un mensaje independiente aparte, después de que cantidad/
     // uso/nombre estén completos (ver preguntarCiudadOFinalizar) — antes se mezclaba con
     // esta pregunta desde el primer mensaje, lo que sonaba a formulario largo en vez de
     // una conversación (caso real detectado 2026-09-13).
-    const [datosPersona, cantidadesExtraidas, usosExtraidos] = await Promise.all([
+    const [datosPersona, cantidadesExtraidas, usosExtraidos, otrosProductos] = await Promise.all([
       nombreFaltante
         ? this.botGpt.extraerNombreYCiudad(texto, true, false)
         : Promise.resolve({ nombre: null, ciudad: null }),
@@ -1581,15 +1614,32 @@ export class BotService implements OnModuleInit {
             ? Promise.resolve(itemsSinCantidad.map(() => ({ cantidad: 0, cantidadTexto: 'cantidades disponibles a confirmar' })))
             : esVolumenProductoFinal
               ? Promise.resolve(itemsSinCantidad.map(() => ({ cantidad: 0, cantidadTexto: 'cantidad a definir según fórmula' })))
-              : this.botGpt.extraerCantidadesPorProducto(
-                  itemsSinCantidad.map((i) => ({ nombre: i.producto, siglas_unidad: 'KG', nombre_unidad: 'Kilogramos' })),
-                  texto,
-                ))
+              : pideOrientacion && !hayCantidadEnTexto
+                ? Promise.resolve(itemsSinCantidad.map(() => ({ cantidad: 0, cantidadTexto: 'cantidad por definir con el asesor' })))
+                : this.botGpt.extraerCantidadesPorProducto(
+                    itemsSinCantidad.map((i) => ({ nombre: i.producto, siglas_unidad: 'KG', nombre_unidad: 'Kilogramos' })),
+                    texto,
+                  ))
         : Promise.resolve([] as { cantidad: number | null; cantidadTexto?: string | null }[]),
       itemsSinUso.length
         ? this.botGpt.extraerUsosPorProducto(nombresUnicosUso, texto)
         : Promise.resolve([] as (string | null)[]),
+      hayPalabras && !esVolumenProductoFinal && !nombreFaltante
+        ? this.botGpt.analizarLoteProductos(texto, cot.items.map((i) => i.producto))
+        : Promise.resolve(null),
     ]);
+
+    const nombresActuales = cot.items.map((i) => i.producto.trim().toLowerCase());
+    const productosExtra = (otrosProductos?.items ?? [])
+      .filter((i) => i.producto?.trim())
+      .filter((i) => {
+        const n = i.producto.trim().toLowerCase();
+        return !nombresActuales.some((a) => a.includes(n) || n.includes(a));
+      })
+      .map((i) => (i.cantidadTexto ? `${i.producto} (${i.cantidadTexto})` : i.producto));
+    if (productosExtra.length) {
+      agregarNota(`El cliente también mencionó: ${productosExtra.join(', ')} — no está en la cotización, revisar si debe agregarse.`);
+    }
 
     const usoPorProducto = new Map<string, string | null>(
       nombresUnicosUso.map((n, idx) => [n.trim().toUpperCase(), usosExtraidos[idx] ?? null]),
@@ -2010,12 +2060,17 @@ export class BotService implements OnModuleInit {
     // catálogo genérico (caso real detectado 2026-09-25: derivó directo a un asesor pese a
     // existir un catálogo del tema). Si además pide una recomendación puntual, no se usa
     // este atajo: eso es criterio comercial y va a un asesor.
-    if (!itemsDetectados.length && !(asesoramiento && REGEX_PIDE_RECOMENDACION.test(textoProducto))) {
+    // Con `asesoramiento` (recomendación o pregunta por una característica del producto — ej.
+    // "¿el aroma es suave o fuerte?") el catálogo NO responde lo que preguntó, así que no se
+    // usa este atajo: va a un asesor (más abajo). Y si ese mismo catálogo ya se le envió, no
+    // se repite (caso real detectado 2026-10-02: el link de fragancias para velas se mandó
+    // dos veces seguidas, ignorando la pregunta sobre el aroma).
+    if (!itemsDetectados.length && !asesoramiento) {
       const catalogosTema = await this.botProforma.obtenerCatalogosDisponibles(ideEmpr);
       const matchTema = catalogosTema.length
         ? await this.botGpt.matchCatalogoProducto(textoProducto, catalogosTema, textoProducto)
         : null;
-      if (matchTema) {
+      if (matchTema && !(datos.catalogosEnviados ?? []).includes(matchTema.ide_cata)) {
         const cat = catalogosTema.find((c) => c.ide_cata === matchTema.ide_cata);
         const link = cat?.path_cata ? `https://diquimec.com.ec/catalogo/${cat.path_cata}` : 'https://diquimec.com.ec/catalogo';
         await enviar(
@@ -2059,11 +2114,14 @@ export class BotService implements OnModuleInit {
     // directo desde el portal web, en vez de escalar a un asesor sin necesidad (caso real
     // detectado 2026-09-22).
     if (!itemsDetectados.length) {
+      // Si ya se le compartió algún catálogo en esta conversación no se repiten los links.
       await enviar(
-        `Puedes revisar nuestro catálogo con precios y generar tu cotización directo desde el portal web:\n` +
-        `📦 Catálogo para emprendedores: https://diquimec.com.ec/catalogo\n` +
-        `📦 Catálogo completo: https://diquimec.com.ec/product\n\n` +
-        `Si prefieres, cuéntame qué productos necesitas y en qué cantidades, y te ayudo a cotizarlos por aquí mismo.`,
+        (datos.catalogosEnviados?.length
+          ? ''
+          : `Puedes revisar nuestro catálogo con precios y generar tu cotización directo desde el portal web:\n` +
+            `📦 Catálogo para emprendedores: https://diquimec.com.ec/catalogo\n` +
+            `📦 Catálogo completo: https://diquimec.com.ec/product\n\n`) +
+        `Cuéntame qué productos necesitas y en qué cantidades, y te ayudo a cotizarlos por aquí mismo 😊`,
       );
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
       return;

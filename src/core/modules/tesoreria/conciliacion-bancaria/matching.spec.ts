@@ -5,6 +5,30 @@ import { calcularSaldosCadena } from './parsers/parser-util';
 const banco = (id: number, fecha: string, centavos: number, documento = '') => ({ id, fecha, documento, centavos });
 const erp = (id: number, fecha: string, centavos: number, numero = '', comprobante = '') => ({ id, fecha, numero, comprobante, centavos });
 
+describe('cruce por documento con varias facturas', () => {
+    const b = (id: number, documento: string, centavos: number, fecha = '2026-09-25') => ({ id, fecha, documento, centavos });
+    const e = (id: number, numero: string, centavos: number, fecha = '2026-09-25') => ({ id, fecha, numero, comprobante: '', centavos });
+
+    it('una transferencia que paga varias facturas cruza con todos sus movimientos del ERP (DOCUMENTO_SUMA)', () => {
+        const r = emparejarUnoAUno([b(1, '2100347177', 25000)], [e(10, '2100347177', 10000), e(11, '2100347177', 8000), e(12, '2100347177', 7000)], 3);
+        expect(r).toHaveLength(1);
+        expect(r[0]).toMatchObject({ idsBanco: [1], regla: 'DOCUMENTO_SUMA' });
+        expect([...r[0].idsErp].sort()).toEqual([10, 11, 12]);
+    });
+
+    it('mismo número dos veces por el monto de una sola transferencia: cruza uno y deja el otro sin cruzar', () => {
+        const r = emparejarUnoAUno([b(1, '11889696', 2900)], [e(10, '11889696', 2900), e(11, '11889696', 2900)], 3);
+        expect(r).toHaveLength(1);
+        expect(r[0].regla).toBe('DOCUMENTO');
+        expect(r[0].idsErp).toEqual([10]);
+    });
+
+    it('si la suma de los movimientos con el mismo número no da el monto del banco, no cruza por suma', () => {
+        const r = emparejarUnoAUno([b(1, '99999999', 25000)], [e(10, '99999999', 10000), e(11, '99999999', 8000)], 3);
+        expect(r.filter((m) => m.regla === 'DOCUMENTO_SUMA')).toHaveLength(0);
+    });
+});
+
 describe('emparejarUnoAUno', () => {
     it('empareja montos repetidos por cercanía de fecha y los marca ambiguos', () => {
         const r = emparejarUnoAUno(

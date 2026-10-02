@@ -18,7 +18,7 @@ export interface ItemErp {
 export interface MatchPropuesto {
     idsBanco: number[];
     idsErp: number[];
-    /** DOCUMENTO, MONTO_FECHA, MONTO_FECHA_AMBIGUO, SUMA */
+    /** DOCUMENTO, DOCUMENTO_SUMA, MONTO_FECHA, MONTO_FECHA_AMBIGUO, SUMA */
     regla: string;
     /** 0-100 */
     confianza: number;
@@ -33,7 +33,7 @@ export const diasEntre = (a: string, b: string): number =>
 const soloDigitos = (t: string): string => (t ?? '').replace(/\D/g, '').replace(/^0+/, '');
 
 /** Los documentos comparables (>= 4 dígitos, para no cruzar por "1" o "12"). */
-const documentoComparable = (t: string): string => {
+export const documentoComparable = (t: string): string => {
     const d = soloDigitos(t);
     return d.length >= 4 ? d : '';
 };
@@ -43,7 +43,9 @@ const DIAS_MAX_POR_DOCUMENTO = 15;
 
 /**
  * Cruce automático 1 a 1 en dos pasadas, ambas con MONTO EXACTO Y MISMO SIGNO:
- *  1. DOCUMENTO: el documento del banco coincide con el número o el comprobante del libro.
+ *  1. DOCUMENTO: el documento del banco coincide con el número o el comprobante del libro. Además (1b, DOCUMENTO_SUMA) un
+ *     movimiento del banco puede cruzar con VARIOS del libro que traen ese mismo documento y suman su monto: una
+ *     transferencia que paga varias facturas, registrada como un cobro por factura.
  *  2. MONTO_FECHA: fechas a `toleranciaDias` o menos. Se asigna primero el par de fecha más
  *     cercana; si ese banco o ese libro tenían varios candidatos igual de buenos (ej. varias
  *     transferencias de 350,00) el cruce se marca AMBIGUO con menos confianza, porque desde el
@@ -73,6 +75,24 @@ export function emparejarUnoAUno(banco: ItemBanco[], erp: ItemErp[], toleranciaD
             resultado.push({ idsBanco: [b.id], idsErp: [candidato.id], regla: 'DOCUMENTO', confianza: 100 });
             bancoLibre.delete(b.id);
             erpLibre.delete(candidato.id);
+        }
+    }
+
+    // Pasada 1b: un movimiento del banco = varios del libro con el MISMO documento cuya suma da su monto
+    for (const b of banco) {
+        if (!bancoLibre.has(b.id)) continue;
+        const doc = documentoComparable(b.documento);
+        if (!doc) continue;
+        const candidatos = (erpPorDocumento.get(doc) ?? []).filter(
+            (e) => erpLibre.has(e.id) && Math.sign(e.centavos) === Math.sign(b.centavos) && diasEntre(b.fecha, e.fecha) <= DIAS_MAX_POR_DOCUMENTO,
+        );
+        if (candidatos.length < 2) continue;
+        const total = candidatos.reduce((s, e) => s + e.centavos, 0);
+        const grupo = total === b.centavos ? candidatos : buscarSubconjunto(candidatos, b.centavos, b.fecha);
+        if (grupo) {
+            resultado.push({ idsBanco: [b.id], idsErp: grupo.map((e) => e.id), regla: 'DOCUMENTO_SUMA', confianza: 95 });
+            bancoLibre.delete(b.id);
+            grupo.forEach((e) => erpLibre.delete(e.id));
         }
     }
 

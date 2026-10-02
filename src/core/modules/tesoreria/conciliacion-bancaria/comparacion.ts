@@ -1,4 +1,4 @@
-import { diasEntre } from './matching';
+import { diasEntre, documentoComparable } from './matching';
 import { aCentavos, deCentavos } from './parsers/parser-util';
 
 /** Umbral de confianza por debajo del cual un cruce automático/IA se marca para revisión. */
@@ -219,12 +219,28 @@ export function construirComparacion(entrada: EntradaComparacion): ResultadoComp
         });
     }
 
+    // Documentos del ERP que ya están cruzados con el banco, con lo que el banco muestra y lo que suma el ERP: si queda otro
+    // movimiento del ERP con ese mismo número sin cruzar, es un posible registro duplicado (misma transferencia cobrada dos veces)
+    const docCruzado = new Map<string, { banco: number; erp: number }>();
+    for (const bl of bloques) {
+        if (bl.tipo !== 'CRUCE') continue;
+        for (const e of bl.erp) {
+            for (const d of new Set([documentoComparable(e.numero ?? ''), documentoComparable(e.comprobante ?? '')])) {
+                if (d && !docCruzado.has(d)) docCruzado.set(d, { banco: bl.totalBanco, erp: bl.totalErp });
+            }
+        }
+    }
+
     // ── Solo ERP (los del margen de otro mes sin cruce no son faltantes: solo se cuentan) ──
     let erpFueraDeMesSinCruce = 0;
     for (const e of entrada.erp) {
         if (erpCruzado.has(e.ide_teclb)) continue;
         if (!e.en_periodo) { erpFueraDeMesSinCruce += 1; continue; }
         const alertas: Alerta[] = [alertaRoja('ERP_SIN_BANCO', 'Falta en el banco')];
+        const docPrevio = [documentoComparable(e.numero ?? ''), documentoComparable(e.comprobante ?? '')].map((d) => (d ? docCruzado.get(d) : undefined)).find(Boolean);
+        if (docPrevio) {
+            alertas.push(alertaAmarilla('DOCUMENTO_REPETIDO', `El número ${e.numero || e.comprobante} ya está cruzado con el banco en otro movimiento del ERP (el banco muestra ${dinero(cents(docPrevio.banco))}): posible registro duplicado de la misma transferencia`));
+        }
         if (e.conciliado_legado) alertas.push(alertaAmarilla('LEGADO', 'Marcado como conciliado con el flujo antiguo, pero sin cruce en esta conciliación'));
         if ((repErp.get(claveErp(e)) ?? 0) > 1) {
             alertas.push(alertaAmarilla('DUPLICADO', 'Posible duplicado: mismo monto y fecha aparecen varias veces en el ERP'));

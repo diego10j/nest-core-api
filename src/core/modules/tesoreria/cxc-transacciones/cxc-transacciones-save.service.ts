@@ -116,6 +116,13 @@ export class CxcTransaccionesSaveService extends BaseService {
 
         await this.validarMontoMaximoEfectivo(dtoIn.ideTettb, dtoIn.valor);
 
+        // Un mismo comprobante (transferencia, depósito...) no se puede cobrar dos veces en la misma cuenta
+        if (dtoIn.numero) {
+            await this.preLibroBancosService.assertNumeroTransaccionLibre({
+                ideTecba: dtoIn.ideTecba, ideTettb: dtoIn.ideTettb, numero: dtoIn.numero,
+            });
+        }
+
         // Número de comprobante: si el usuario no ingresa uno (típico en efectivo), se genera
         // automáticamente (mismo mecanismo que CxpTransaccionesSaveService.savePagoCxP).
         const numero = dtoIn.numero
