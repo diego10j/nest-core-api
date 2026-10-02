@@ -15,6 +15,9 @@ const RUC_EXCLUIDOS = ['1719020883001', '1793234926001'];
 const MAX_CONFIGURACIONES = 15;
 const MAX_POR_TIPO = 8;
 const MAX_EXACTAS_POR_TIPO = 10;
+
+/** Umbrales frecuentes por tipo de pago, más todas las cantidades realmente vendidas (para anclar las exactas). */
+type Umbrales = Map<number | null, number[]> & { vendidas?: Map<number | null, number[]> };
 const PREFIJO_OBSERVACION = 'Config IA';
 
 type Linea = {
@@ -360,7 +363,7 @@ export class ConfigPreciosIaService {
    * donde más mejora (umbrales frecuentes o cualquier cantidad con 3+ ventas), hasta lograr consistencia o llegar al
    * máximo de rangos por tipo de pago.
    */
-  private refinar(tiers: TierIa[], validas: Linea[], umbrales: Map<number | null, number[]>, paso: number): TierIa[] {
+  private refinar(tiers: TierIa[], validas: Linea[], umbrales: Umbrales, paso: number): TierIa[] {
     const salida: TierIa[] = tiers.filter((t) => t.exacta || t.ide_cncfp === null);
     const tipos = new Set(tiers.filter((t) => !t.exacta && t.ide_cncfp !== null).map((t) => t.ide_cncfp));
 
@@ -432,7 +435,7 @@ export class ConfigPreciosIaService {
     tiers: TierIa[],
     tiposDisponibles: Set<number | null>,
     paso: number,
-    umbrales: Map<number | null, number[]>,
+    umbrales: Umbrales,
   ): TierIa[] {
     const porTipo = new Map<number | null, TierIa[]>();
     tiers
@@ -449,7 +452,16 @@ export class ConfigPreciosIaService {
       // Cantidades exactas con precio estándar: no forman cadena de rangos, una por cantidad.
       lista
         .filter((t) => t.exacta && Number(t.desde) > 0)
-        .map(ajustar)
+        // Una cantidad exacta se ancla a la cantidad realmente vendida más cercana (no a un umbral de rangos).
+        .map((t) => {
+          const reales = umbrales.vendidas?.get(t.ide_cncfp) ?? [];
+          const cercana = reales.reduce<number | null>(
+            (m, q) => (m === null || Math.abs(q - t.desde) < Math.abs(m - t.desde) ? q : m),
+            null,
+          );
+          const desde = cercana !== null && Math.abs(cercana - t.desde) / t.desde <= 0.15 ? cercana : t.desde;
+          return { ...t, desde: Math.max(0, Number(desde) || 0) };
+        })
         .filter((t, i, arr) => arr.findIndex((x) => x.desde === t.desde) === i)
         .slice(0, MAX_EXACTAS_POR_TIPO)
         .forEach((t) => salida.push({ ...t, patron: 'precio_fijo', hasta: null, exacta: true }));
@@ -514,8 +526,14 @@ export class ConfigPreciosIaService {
       resumen.filter((t) => t.lineas_validas >= 4).map((t) => t.ide_cncfp),
     );
     tiposDisponibles.add(null);
-    const umbrales = new Map<number | null, number[]>(
+    const umbrales: Umbrales = new Map<number | null, number[]>(
       resumen.map((t) => [t.ide_cncfp, t.cantidades_frecuentes] as [number | null, number[]]),
+    );
+    umbrales.vendidas = new Map(
+      [...new Set(validas.map((l) => l.tipo))].map((tipo) => [
+        tipo,
+        [...new Set(validas.filter((l) => l.tipo === tipo).map((l) => l.cantidad))],
+      ]),
     );
 
     const datos = {
