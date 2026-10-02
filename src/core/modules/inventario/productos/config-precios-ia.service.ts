@@ -347,6 +347,78 @@ export class ConfigPreciosIaService {
     return umbrales.reduce((mejor, q) => (Math.abs(q - desde) < Math.abs(mejor - desde) ? q : mejor), umbrales[0]);
   }
 
+  /**
+   * Si un rango propuesto es poco consistente (los márgenes de sus ventas se dispersan), se parte en las cantidades
+   * donde más mejora (umbrales frecuentes o cualquier cantidad con 3+ ventas), hasta lograr consistencia o llegar al
+   * máximo de rangos por tipo de pago.
+   */
+  private refinar(tiers: TierIa[], validas: Linea[], umbrales: Map<number | null, number[]>, paso: number): TierIa[] {
+    const salida: TierIa[] = tiers.filter((t) => t.exacta || t.ide_cncfp === null);
+    const tipos = new Set(tiers.filter((t) => !t.exacta && t.ide_cncfp !== null).map((t) => t.ide_cncfp));
+
+    tipos.forEach((tipo) => {
+      const exactas = tiers.filter((t) => t.exacta && t.ide_cncfp === tipo).map((t) => t.desde);
+      const lineasTipo = validas.filter(
+        (l) => l.tipo === tipo && !exactas.some((q) => Math.abs(l.cantidad - q) < paso / 2),
+      );
+      const propios = tiers.filter((t) => !t.exacta && t.ide_cncfp === tipo).sort((a, b) => a.desde - b.desde);
+      if (propios.length === 0) return;
+      let cortes = propios.map((t, i) => (i === 0 ? 0 : t.desde));
+
+      const conteo = new Map<number, number>();
+      lineasTipo.forEach((l) => conteo.set(l.cantidad, (conteo.get(l.cantidad) ?? 0) + 1));
+      const candidatos = [
+        ...new Set([...(umbrales.get(tipo) ?? []), ...[...conteo.entries()].filter(([, n]) => n >= 3).map(([q]) => q)]),
+      ].sort((x, y) => x - y);
+
+      const dentro = (ls: Linea[]) => {
+        if (ls.length === 0) return 0;
+        const m = margenPonderado(ls);
+        return ls.filter((l) => Math.abs(margenLinea(l) - m) <= 5).length;
+      };
+      const enRango = (desde: number, hasta: number | null) =>
+        lineasTipo.filter((l) => l.cantidad >= desde && (hasta === null || l.cantidad < hasta));
+
+      while (cortes.length < MAX_POR_TIPO) {
+        let mejor: { corte: number; ganancia: number } | null = null;
+        cortes.forEach((desde, i) => {
+          const hasta = cortes[i + 1] ?? null;
+          const ls = enRango(desde, hasta);
+          if (ls.length < 8 || dentro(ls) / ls.length >= 0.7) return;
+          candidatos
+            .filter((q) => q > desde && (hasta === null || q < hasta))
+            .forEach((q) => {
+              const izq = ls.filter((l) => l.cantidad < q);
+              const der = ls.filter((l) => l.cantidad >= q);
+              if (izq.length < 3 || der.length < 3) return;
+              const ganancia = dentro(izq) + dentro(der) - dentro(ls);
+              if (ganancia >= Math.max(3, ls.length * 0.08) && (!mejor || ganancia > mejor.ganancia)) {
+                mejor = { corte: q, ganancia };
+              }
+            });
+        });
+        if (!mejor) break;
+        cortes = [...cortes, (mejor as { corte: number }).corte].sort((a, b) => a - b);
+      }
+
+      cortes.forEach((desde, i) => {
+        const original = propios.find((t, k) => (k === 0 ? 0 : t.desde) === desde);
+        salida.push(
+          original ?? {
+            ide_cncfp: tipo,
+            desde,
+            hasta: null,
+            patron: 'margen',
+            exacta: false,
+            razon: 'Rango dividido: el margen varía dentro del rango propuesto',
+          },
+        );
+        if (original && i === 0) original.desde = 0;
+      });
+    });
+    return salida;
+  }
+
   /** Ajusta lo que propone el modelo a rangos válidos y continuos por tipo, sin confiar en sus números. */
   private normalizar(
     tiers: TierIa[],
@@ -466,7 +538,27 @@ export class ConfigPreciosIaService {
 
     // ── El modelo decide los cortes y el tipo de precio; los valores se calculan aquí con los datos reales ──
     const advertenciasServidor: string[] = [];
-    let tiers = this.normalizar(respuesta.configuraciones ?? [], tiposDisponibles, paso, umbrales);
+    // Todo tipo de pago con ventas suficientes (p. ej. Crédito) tiene configuración aunque la IA lo omita:
+    // parte de un solo rango y el refinamiento lo divide si hace falta.
+    const propuestasIa = [...(respuesta.configuraciones ?? [])];
+    tiposDisponibles.forEach((tipo) => {
+      if (tipo !== null && !propuestasIa.some((t) => t.ide_cncfp === tipo)) {
+        propuestasIa.push({
+          ide_cncfp: tipo,
+          desde: 0,
+          hasta: null,
+          patron: 'margen',
+          exacta: false,
+          razon: 'Tipo de pago con ventas suficientes: rango inicial según el margen observado',
+        });
+      }
+    });
+    let tiers = this.normalizar(
+      this.refinar(this.normalizar(propuestasIa, tiposDisponibles, paso, umbrales), validas, umbrales, paso),
+      tiposDisponibles,
+      paso,
+      umbrales,
+    );
 
     const calcular = (t: TierIa, todos: TierIa[]): ConfigPrecioPropuesta | null => {
       const tiposConConfig = new Set(todos.map((x) => x.ide_cncfp).filter((x) => x !== null));
@@ -639,7 +731,7 @@ export class ConfigPreciosIaService {
       advertencias,
       configuraciones: propuestas.sort(
         (a, b) =>
-          (a.ide_cncfp ?? 99) - (b.ide_cncfp ?? 99) || Number(a.exacta) - Number(b.exacta) || a.rango1 - b.rango1,
+          (a.ide_cncfp ?? 99) - (b.ide_cncfp ?? 99) || a.rango1 - b.rango1 || Number(b.exacta) - Number(a.exacta),
       ),
     };
   }
