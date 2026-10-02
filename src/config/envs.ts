@@ -21,13 +21,12 @@ interface EnvVars {
   JWT_SECRET_EXPIRES_TIME: string;
   JWT_REFRESH_SECRET: string;
   JWT_REFRESH_EXPIRES_TIME: string;
+  APP_LOGIN_URL: string;
 
   FORMAT_DATE_BD: string;
   FORMAT_TIME_BD: string;
   PATH_DRIVE: string;
 
-  WHATSAPP_API_URL: string;
-  WHATSAPP_VERIFY_TOKEN: string;
   WHATSAPP_SOCKET_PORT: number;
 
   OPENAI_API_KEY: string;
@@ -39,7 +38,13 @@ interface EnvVars {
   YCLOUD_API_URL?: string;
 
   AUTH_GUARD_MODE: 'enforce' | 'warn';
+
+  /** Tope en ms por consulta SQL (statement_timeout). 0 = sin tope (comportamiento histórico). */
+  DB_STATEMENT_TIMEOUT_MS: number;
 }
+
+// Valor por defecto público (repo abierto): en producción debe definirse JWT_REFRESH_SECRET propio
+export const DEFAULT_JWT_REFRESH_SECRET = 'refresh_secret_change_me';
 
 const envsSchema = z
   .object({
@@ -75,15 +80,15 @@ const envsSchema = z
 
     JWT_SECRET: z.string(),
     JWT_SECRET_EXPIRES_TIME: z.string(),
-    JWT_REFRESH_SECRET: z.string().optional().default('refresh_secret_change_me'),
+    JWT_REFRESH_SECRET: z.string().optional().default(DEFAULT_JWT_REFRESH_SECRET),
     JWT_REFRESH_EXPIRES_TIME: z.string().optional().default('7d'),
+    // URL de inicio de sesión del ERP que se muestra en el correo de credenciales (opcional)
+    APP_LOGIN_URL: z.string().optional().default(''),
 
     FORMAT_DATE_BD: z.string(),
     FORMAT_TIME_BD: z.string(),
     PATH_DRIVE: z.string(),
 
-    WHATSAPP_VERIFY_TOKEN: z.string(),
-    WHATSAPP_API_URL: z.string(),
     WHATSAPP_SOCKET_PORT: z
       .string()
       .refine((val) => !isNaN(Number(val)), {
@@ -107,6 +112,8 @@ const envsSchema = z
 
     // 'warn' = solo loguea lo que el guard JWT global rechazaría (rollout); 'enforce' = rechaza.
     AUTH_GUARD_MODE: z.enum(['enforce', 'warn']).optional().default('enforce'),
+
+    DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).optional().default(0),
   })
   .passthrough();
 
@@ -125,6 +132,7 @@ export const envs = {
   // dbPort: envVars.DB_PORT,
   // dbUsername: envVars.DB_USERNAME,
   bdUrlPool: envVars.DB_URL_POOL,
+  dbStatementTimeoutMs: envVars.DB_STATEMENT_TIMEOUT_MS,
 
   idSistema: envVars.ID_SISTEMA,
   mode: envVars.MODE,
@@ -139,13 +147,12 @@ export const envs = {
   jwtSecretExpiresTime: envVars.JWT_SECRET_EXPIRES_TIME,
   jwtRefreshSecret: envVars.JWT_REFRESH_SECRET,
   jwtRefreshExpiresTime: envVars.JWT_REFRESH_EXPIRES_TIME,
+  appLoginUrl: envVars.APP_LOGIN_URL,
 
   formatDateBd: envVars.FORMAT_DATE_BD,
   formatTimeBd: envVars.FORMAT_TIME_BD,
   pathDrive: envVars.PATH_DRIVE,
 
-  whatsappVerifyToken: envVars.WHATSAPP_VERIFY_TOKEN,
-  whatsappApiUrl: envVars.WHATSAPP_API_URL,
   whatsappSocketPort: envVars.WHATSAPP_SOCKET_PORT,
 
   openaiApiKey: envVars.OPENAI_API_KEY,

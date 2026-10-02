@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { PasswordRecoveryService } from './application/services/password-recovery.service';
 import { AuthService } from './auth.service';
 import { Auth, GetUser } from './decorators';
 import { Public } from './decorators/public.decorator';
@@ -13,6 +14,7 @@ import { HorarioLoginDto } from './dto/horario-login.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
+import { ForgotPasswordDto, ResetPasswordWithCodeDto, VerifyResetCodeDto } from './dto/password-recovery.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { AuthUser } from './interfaces';
@@ -20,7 +22,10 @@ import { AuthUser } from './interfaces';
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passwordRecovery: PasswordRecoveryService,
+  ) { }
 
   @Public()
   @Post('login')
@@ -123,5 +128,40 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
   resetPassword(@Body() dtoIn: ResetPasswordDto) {
     return this.authService.resetPassword(dtoIn);
+  }
+
+  // ---------------------- Recuperación de contraseña (olvidé mi contraseña) ---------------------- //
+
+  @Public()
+  @Post('forgotPassword')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Solicitar código de recuperación',
+    description: 'Envía un código de 6 dígitos al correo registrado. Responde siempre lo mismo, exista o no la cuenta.',
+  })
+  forgotPassword(@Body() dtoIn: ForgotPasswordDto) {
+    return this.passwordRecovery.requestCode(dtoIn.identifier);
+  }
+
+  @Public()
+  @Post('verifyResetCode')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Verificar código de recuperación',
+    description: 'Valida el código de 6 dígitos (máx. 5 intentos). Devuelve un resetToken de un solo uso.',
+  })
+  verifyResetCode(@Body() dtoIn: VerifyResetCodeDto) {
+    return this.passwordRecovery.verifyCode(dtoIn.identifier, dtoIn.code);
+  }
+
+  @Public()
+  @Post('resetPasswordWithCode')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Establecer nueva contraseña con el resetToken',
+    description: 'Guarda la nueva contraseña y cierra las sesiones activas del usuario.',
+  })
+  resetPasswordWithCode(@Body() dtoIn: ResetPasswordWithCodeDto) {
+    return this.passwordRecovery.resetPassword(dtoIn.resetToken, dtoIn.newPassword, dtoIn.confirmNewPassword);
   }
 }

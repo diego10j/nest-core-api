@@ -1,0 +1,39 @@
+{{> partials/header}}
+        <h2>{{#if esNuevoUsuario}}Bienvenido a {{appName}}{{else}}Contraseña temporal{{/if}}</h2>
+        <p>Hola <strong>{{nombre}}</strong>,</p>
+        {{#if esNuevoUsuario}}
+        <p>Se creó tu acceso a {{appName}}. Estos son tus datos para ingresar por primera vez:</p>
+        {{else}}
+        <p>Un administrador restableció la contraseña de tu cuenta. Usa los siguientes datos para ingresar:</p>
+        {{/if}}
+
+        <div class="info-card">
+            <div class="card-title">Datos de acceso</div>
+            <table>
+                <tr>
+                    <td class="label">Usuario</td>
+                    <td><strong>{{usuario}}</strong></td>
+                </tr>
+                <tr>
+                    <td class="label">Contraseña temporal</td>
+                    <td><strong style="font-family:Consolas,'Courier New',monospace;font-size:16px;letter-spacing:1px;">{{password}}</strong></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="obs-block">
+            <strong>Importante:</strong> el sistema te pedirá cambiar esta contraseña al iniciar sesión.
+            No la compartas con nadie y elimina este correo cuando la hayas cambiado.
+        </div>
+
+        {{#if loginUrl}}
+        <p style="text-align:center;margin:24px 0;">
+            <a href="{{loginUrl}}" class="btn btn-primary">Iniciar sesión</a>
+        </p>
+        {{/if}}
+
+        <p style="font-size:12px;color:#888;">
+            Si no esperabas este mensaje, avisa al administrador del sistema.
+        </p>
+        <p>Saludos cordiales,<br>El equipo de {{appName}}</p>
+{{> partials/footer}}

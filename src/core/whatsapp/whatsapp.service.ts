@@ -5,7 +5,7 @@ import { isDefined } from 'src/util/helpers/common-util';
 import { FileTempService } from '../modules/sistema/files/file-temp.service';
 
 import { MediaFile } from './api/interface/whatsapp';
-import { WhatsappApiService } from './api/whatsapp-api.service';
+import { WhatsappChatService } from './api/whatsapp-chat.service';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { GetChatsDto } from './dto/get-chats.dto';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
@@ -15,7 +15,7 @@ import { UploadMediaDto } from './dto/upload-media.dto';
 @Injectable()
 export class WhatsappService {
   constructor(
-    public readonly whatsappApi: WhatsappApiService,
+    public readonly whatsappChat: WhatsappChatService,
     public readonly fileTempService: FileTempService,
   ) { }
 
@@ -23,7 +23,7 @@ export class WhatsappService {
    * Retorna los mensajes de un chat (Cloud API)
    */
   async getMensajes(dto: GetMensajesDto & HeaderParamsDto) {
-    return this.whatsappApi.getMensajes(dto);
+    return this.whatsappChat.getMensajes(dto);
   }
 
   /**
@@ -31,7 +31,7 @@ export class WhatsappService {
    */
   async getChats(dto: GetChatsDto & HeaderParamsDto) {
     await this.assertConfig(dto.ideEmpr);
-    return this.whatsappApi.getChats(dto);
+    return this.whatsappChat.getChats(dto);
   }
 
   /**
@@ -39,7 +39,7 @@ export class WhatsappService {
    */
   async searchContacto(dto: SearchChatDto & HeaderParamsDto) {
     await this.assertConfig(dto.ideEmpr);
-    return this.whatsappApi.searchContacto(dto);
+    return this.whatsappChat.searchContacto(dto);
   }
 
   /**
@@ -47,7 +47,7 @@ export class WhatsappService {
    */
   async enviarMensajeTexto(dto: EnviarMensajeDto & HeaderParamsDto) {
     await this.assertConfig(dto.ideEmpr);
-    return this.whatsappApi.enviarMensajeTexto(dto);
+    return this.whatsappChat.enviarMensajeTexto(dto);
   }
 
   /**
@@ -56,14 +56,14 @@ export class WhatsappService {
   async enviarMensajeMedia(dto: UploadMediaDto & HeaderParamsDto, file: Express.Multer.File) {
     if (!file?.buffer) throw new Error('Archivo no válido o vacío');
     await this.assertConfig(Number(dto.ideEmpr));
-    return this.whatsappApi.enviarMensajeMedia(dto, file);
+    return this.whatsappChat.enviarMensajeMedia(dto, file);
   }
 
   /**
    * Descarga un archivo multimedia desde WhatsApp y lo guarda en temporales
    */
   async downloadMedia(messageId: string): Promise<MediaFile> {
-    return this.whatsappApi.download(messageId);
+    return this.whatsappChat.download(messageId);
   }
 
   /**
@@ -80,7 +80,7 @@ export class WhatsappService {
   // ─── Helper ─────────────────────────────────────────────────────────────────
 
   private async assertConfig(ideEmpr: number) {
-    const config = await this.whatsappApi.getConfigWhatsApp(ideEmpr);
+    const config = await this.whatsappChat.getConfigWhatsApp(ideEmpr);
     if (!isDefined(config)) {
       throw new BadRequestException('No existe cuenta WhatsApp Business configurada para esta empresa');
     }

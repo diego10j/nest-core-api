@@ -23,6 +23,7 @@ import {
     ReembolsoLiquidacionCompraDto,
     SaveDocumentoCxPDto,
 } from './dto/save-documento-cxp.dto';
+import { calcularTotalesCxP } from './helpers/calcular-totales-cxp';
 
 // ─── Constantes de tablas ────────────────────────────────────────────────────
 const MODULE = 'cxp';
@@ -338,6 +339,15 @@ export class DocumentosCxPSaveService extends BaseService {
                 cabecera.autorizacio_cpcfa = claveAccesoSri;
             }
 
+            // ── Edición de una Liquidación electrónica ya generada ───────────
+            // Solo se edita en estado PENDIENTE y se actualizan los totales de su sri_comprobante:
+            // el XML se arma desde ahí, así que sin esto se enviaba con los importes de la primera
+            // versión (ej. IVA 7500) aunque el documento ya estuviera corregido.
+            let sriUpdateQuery: UpdateQuery | undefined;
+            if (isUpdate && esLiquidacionCompra) {
+                sriUpdateQuery = await this.buildUpdateSriLiquidacion(cabecera, totales, dtoIn);
+            }
+
             // ── Kardex ───────────────────────────────────────────────────────
             // Paridad legacy: si al menos un artículo hace kardex, el comprobante
             // de inventario incluye TODOS los detalles del documento.
@@ -404,6 +414,9 @@ export class DocumentosCxPSaveService extends BaseService {
             }
             if (sriHeaderQuery) {
                 listQuery.push(sriHeaderQuery);
+            }
+            if (sriUpdateQuery) {
+                listQuery.push(sriUpdateQuery);
             }
             if (esLiquidacionFisica) {
                 listQuery.push(this.buildUpdateNumActualCcdaf(dtoIn.ide_ccdaf!, siguienteNumActualFisica!));
@@ -1065,6 +1078,56 @@ export class DocumentosCxPSaveService extends BaseService {
         return q;
     }
 
+    /**
+     * Valida que la Liquidación electrónica se pueda editar (solo PENDIENTE y misma fecha de emisión,
+     * que forma parte de la clave de acceso) y arma el UPDATE de sus totales en sri_comprobante.
+     * Fija numero/autorización del documento a los del comprobante para que el formulario no los cambie.
+     * Devuelve undefined si el documento no tiene comprobante electrónico (liquidación física).
+     */
+    private async buildUpdateSriLiquidacion(
+        cabecera: CabDocumentoCxPDto,
+        totales: Totales,
+        dtoIn: SaveDocumentoCxPDto & HeaderParamsDto,
+    ): Promise<UpdateQuery | undefined> {
+        const q = new SelectQuery(`
+            SELECT sc.ide_srcom, sc.ide_sresc, sc.estab_srcom, sc.ptoemi_srcom, sc.secuencial_srcom,
+                   sc.claveacceso_srcom, (sc.fechaemision_srcom = $2::date) AS misma_fecha
+            FROM cxp_cabece_factur a
+            INNER JOIN sri_comprobante sc ON sc.ide_srcom = a.ide_srcom
+            WHERE a.ide_cpcfa = $1
+        `);
+        q.addIntParam(1, Number(cabecera.ide_cpcfa));
+        q.addStringParam(2, String(cabecera.fecha_emisi_cpcfa));
+        const sri = await this.dataSource.createSingleQuery(q);
+        if (!sri) return undefined;
+
+        if (Number(sri.ide_sresc) !== EstadoComprobanteEnum.PENDIENTE.codigo) {
+            const estado = EstadoComprobanteEnum.getDescripcion(Number(sri.ide_sresc)) ?? sri.ide_sresc;
+            throw new BadRequestException(
+                `La liquidación está en estado ${estado}: solo se puede editar en estado PENDIENTE.`,
+            );
+        }
+        if (!sri.misma_fecha) {
+            throw new BadRequestException(
+                'No se puede cambiar la fecha de emisión de una liquidación electrónica (forma parte de la clave de acceso). Anúlela y emita una nueva.',
+            );
+        }
+
+        cabecera.numero_cpcfa = `${sri.estab_srcom}${sri.ptoemi_srcom}${sri.secuencial_srcom}`;
+        cabecera.autorizacio_cpcfa = sri.claveacceso_srcom;
+
+        const upd = new UpdateQuery('sri_comprobante', 'ide_srcom');
+        upd.values.set('subtotal0_srcom', totales.base_tarifa0);
+        upd.values.set('base_grabada_srcom', totales.base_grabada);
+        upd.values.set('subtotal_srcom', totales.base_grabada + totales.base_tarifa0);
+        upd.values.set('iva_srcom', totales.valor_iva);
+        upd.values.set('total_srcom', totales.total);
+        if (cabecera.correo_geper) upd.values.set('correo_srcom', cabecera.correo_geper);
+        upd.where = 'ide_srcom = $1';
+        upd.addIntParam(1, Number(sri.ide_srcom));
+        return upd;
+    }
+
     private buildUpdateCabecera(
         ideCpcfa: number,
         cabecera: CabDocumentoCxPDto,
@@ -1644,51 +1707,14 @@ export class DocumentosCxPSaveService extends BaseService {
     // HELPERS PRIVADOS
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Calcula bases, IVA y total. El descuento reduce tanto la base gravada usada para
-     * el IVA como el total del documento (a diferencia de calcularTotalDocumento del
-     * legacy, que solo lo aplicaba al IVA y dejaba el campo como puramente informativo —
-     * un defecto heredado: Descuento/Otros Valores existen para poder cuadrar el total
-     * contra la factura real del proveedor, así que sí deben afectar el total). La
-     * tarifa se maneja como fracción (ej. 0.15).
-     */
+    /** Bases, IVA y total del documento (ver helpers/calcular-totales-cxp.ts). */
     private calcularTotales(
         detalles: DetalleDocumentoCxPDto[],
         tarifaIva: number,
         descuento: number,
         otros: number,
     ) {
-        let baseGrabada = 0;
-        let baseTarifa0 = 0;
-        let baseNoObjeto = 0;
-
-        for (const det of detalles) {
-            const valor = (Number(det.cantidad_cpdfa) || 0) * (Number(det.precio_cpdfa) || 0);
-            switch (det.iva_inarti_cpdfa) {
-                case '1':
-                    baseGrabada += valor;
-                    break;
-                case '-1':
-                    baseTarifa0 += valor;
-                    break;
-                case '0':
-                    baseNoObjeto += valor;
-                    break;
-            }
-        }
-
-        const valorIva = Number(((baseGrabada - descuento) * tarifaIva).toFixed(2));
-        const total = Number(
-            (baseGrabada - descuento + baseNoObjeto + baseTarifa0 + valorIva + otros).toFixed(2),
-        );
-
-        return {
-            base_grabada: Number(baseGrabada.toFixed(2)),
-            base_tarifa0: Number(baseTarifa0.toFixed(2)),
-            base_no_objeto_iva: Number(baseNoObjeto.toFixed(2)),
-            valor_iva: valorIva,
-            total,
-        };
+        return calcularTotalesCxP(detalles, tarifaIva, descuento, otros);
     }
 
     /**

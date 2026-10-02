@@ -2,12 +2,13 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
+import compression from 'compression';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
 
 import { AppModule } from './app.module';
 import { EndpointExceptionFilter } from './common/filters/endpoint-exception.filter';
-import { envs } from './config/envs';
+import { DEFAULT_JWT_REFRESH_SECRET, envs } from './config/envs';
 import { isEncryptionKeyConfigured } from './core/modules/sri/configuracion/crypto.util';
 import { SocketIoAdapter } from './socket-io.adapter';
 
@@ -16,6 +17,10 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   app.setGlobalPrefix('api');
+
+  // Compresión gzip de respuestas JSON grandes (listados de DataTableQuery de hasta cientos de filas).
+  // Umbral 1 KB; los binarios ya comprimidos (PDF, imágenes) no se recomprimen.
+  app.use(compression({ threshold: 1024 }));
 
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -152,6 +157,18 @@ async function bootstrap() {
     }
   } catch (error) {
     logger.error(`${(error as Error).message}. Hasta corregirla no se podrán guardar ni leer valores cifrados con la clave nueva.`);
+  }
+
+  const refreshSecret = envs.jwtRefreshSecret;
+  if (
+    refreshSecret === DEFAULT_JWT_REFRESH_SECRET ||
+    refreshSecret.startsWith('<') ||
+    refreshSecret === envs.jwtSecret
+  ) {
+    const msg =
+      'JWT_REFRESH_SECRET usa un valor por defecto/público o igual a JWT_SECRET: cualquiera podría forjar refresh tokens. Defina uno propio y distinto (openssl rand -base64 48) en el .env.';
+    if (envs.mode === 'DEV') logger.warn(msg);
+    else logger.error(msg);
   }
 
   const server = app.getHttpServer();

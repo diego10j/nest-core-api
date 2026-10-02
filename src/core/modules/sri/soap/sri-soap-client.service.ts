@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, ServiceUnavailableException } from '@nestjs/common';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
@@ -111,7 +111,28 @@ export class SriSoapClientService {
       return data;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new InternalServerErrorException(`Error de comunicación con el servicio web del SRI (${url}): ${msg}`);
+      // El SRI suele explicar el 500 en el cuerpo (SOAP Fault). Se incluye recortado para poder
+      // diagnosticar sin tener que repetir la llamada con un proxy; es texto del SRI, sin secretos.
+      const body = axios.isAxiosError(err) && typeof err.response?.data === 'string' ? err.response.data : '';
+      const detalle = body
+        ? ` | Respuesta del SRI: ${body.replace(/\s+/g, ' ').trim().slice(0, 600)}`
+        : axios.isAxiosError(err) && err.code
+          ? ` | Código de red: ${err.code}`
+          : '';
+      // Sin conexión con el SRI (caída, bloqueo de red, DNS): no es un rechazo del comprobante. Se
+      // responde 503 con un mensaje accionable; el comprobante conserva su estado y se puede reintentar.
+      const codigoRed = axios.isAxiosError(err) ? err.code : undefined;
+      const sinConexion = ['ETIMEDOUT', 'ECONNABORTED', 'ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH'];
+      if (codigoRed && sinConexion.includes(codigoRed)) {
+        throw new ServiceUnavailableException(
+          `No se pudo conectar con el SRI (${new URL(url).host}, ${codigoRed}). El comprobante conserva su estado: ` +
+            'vuelva a intentar en unos minutos. Si persiste, revise que este servidor tenga salida al SRI (puerto 443) ' +
+            'o que el servicio del SRI no esté caído.',
+        );
+      }
+      throw new InternalServerErrorException(
+        `Error de comunicación con el servicio web del SRI (${url}): ${msg}${detalle}`,
+      );
     }
   }
 }
