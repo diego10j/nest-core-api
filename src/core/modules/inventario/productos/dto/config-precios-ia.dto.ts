@@ -44,6 +44,11 @@ export class ConfigPrecioIaItemDto {
   @IsBoolean()
   rango_infinito: boolean;
 
+  /** Cantidad exacta con precio estándar (rango1); no es un rango. */
+  @IsOptional()
+  @IsBoolean()
+  exacta?: boolean;
+
   @IsIn(['utilidad', 'fijo'])
   modo: 'utilidad' | 'fijo';
 
