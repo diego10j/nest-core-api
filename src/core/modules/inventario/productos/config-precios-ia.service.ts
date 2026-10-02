@@ -136,6 +136,13 @@ Tu trabajo es detectar CÓMO se fijó realmente el precio y proponer la configur
    - Fusiona bandas contiguas SOLO si su precio y margen son prácticamente iguales. No unas bandas distintas para "simplificar".
    - "desde" de cada rango (salvo el primero, que es 0) DEBE ser exactamente uno de los valores de "cantidades_frecuentes".
    - Ignora ventas atípicas (descuentos puntuales, errores, clientes especiales).
+   - Regla comercial: las cantidades mínimas (las más pequeñas) llevan por lo general el MAYOR margen, y el margen baja a
+     medida que sube la cantidad. Por eso NO fusiones las cantidades pequeñas con bandas más grandes: conserva sus propios
+     escalones aunque tengan pocas ventas, siempre que su margen sea claramente más alto que el de la banda siguiente.
+   - Revisa SIEMPRE una por una las 3 o 4 cantidades más pequeñas de "niveles" con 3 o más ventas. Si una tiene precio
+     estable (pct_precio_estable alto) y distinto al de la cantidad siguiente, dale su propia configuración como cantidad
+     exacta (exacta=true, patron precio_fijo); si varias son así, una configuración por cada cantidad. Si en cambio su
+     precio varía, dale un rango propio con patrón margen.
 2. Tipo de precio de cada configuración ("patron"):
    - "margen" (por defecto): porcentaje de utilidad sobre el costo. El costo promedio varía con el tiempo, así que es lo
      normal. El porcentaje será el margen histórico del rango.
@@ -488,7 +495,7 @@ export class ConfigPreciosIaService {
         return null;
       }
       const fijo = t.patron === 'precio_fijo' && constante;
-      if (t.patron === 'precio_fijo' && !constante) {
+      if (t.patron === 'precio_fijo' && !constante && ls.length >= 3) {
         advertenciasServidor.push(
           `${nombre} desde ${t.desde}: la IA sugirió precio fijo pero los precios varían; se usó porcentaje de utilidad.`,
         );
@@ -529,6 +536,24 @@ export class ConfigPreciosIaService {
       tiers.map((t) => calcular(t, tiers)).filter((p): p is ConfigPrecioPropuesta => p !== null);
     let propuestas = calcularTodos();
 
+    // Un rango respaldado por menos de 3 ventas no es un escalón: se fusiona con el vecino y se recalcula.
+    for (;;) {
+      const debil = propuestas
+        .filter(
+          (p) =>
+            !p.exacta && p.ventas < 3 && propuestas.filter((x) => !x.exacta && x.ide_cncfp === p.ide_cncfp).length > 1,
+        )
+        .sort((x, y) => x.ventas - y.ventas)[0];
+      if (!debil) break;
+      tiers = this.normalizar(
+        tiers.filter((t) => !(t.ide_cncfp === debil.ide_cncfp && t.desde === debil.rango1 && !t.exacta)),
+        tiposDisponibles,
+        paso,
+        umbrales,
+      );
+      propuestas = calcularTodos();
+    }
+
     // Tope total: se quita la configuración con menos ventas y se vuelve a ajustar la continuidad.
     while (propuestas.length > MAX_CONFIGURACIONES) {
       const menor = propuestas.reduce((a, b) => (b.ventas < a.ventas ? b : a));
@@ -559,6 +584,30 @@ export class ConfigPreciosIaService {
         p.rango1 = i === 0 ? 0 : p.rango1;
         p.rango2 = sig ? r4(sig.rango1 - paso) : null;
         p.rango_infinito = !sig;
+      });
+    });
+
+    propuestas
+      .filter((p) => !p.exacta && p.ventas >= 8 && p.coherencia < 50)
+      .forEach((p) =>
+        advertenciasServidor.push(
+          `${p.nombre_cncfp} ${p.rango1}${p.rango2 === null ? '+' : ' a ' + p.rango2}: los márgenes varían mucho dentro del rango (consistencia ${p.coherencia} %); revisa si depende del cliente y no de la cantidad.`,
+        ),
+      );
+
+    // Lo normal es que el margen baje al subir la cantidad; un rango mayor con margen mayor merece revisión.
+    const cadenas = new Map<number | null, ConfigPrecioPropuesta[]>();
+    propuestas
+      .filter((p) => !p.exacta)
+      .forEach((p) => cadenas.set(p.ide_cncfp, [...(cadenas.get(p.ide_cncfp) ?? []), p]));
+    cadenas.forEach((lista) => {
+      lista.sort((x, y) => x.rango1 - y.rango1);
+      lista.forEach((p, i) => {
+        if (i > 0 && p.utilidad_pct > lista[i - 1].utilidad_pct + 3) {
+          advertenciasServidor.push(
+            `${p.nombre_cncfp} desde ${p.rango1}: la utilidad (${p.utilidad_pct} %) es mayor que en la cantidad menor (${lista[i - 1].utilidad_pct} %); lo habitual es que baje al subir la cantidad.`,
+          );
+        }
       });
     });
 
@@ -599,7 +648,7 @@ export class ConfigPreciosIaService {
   async aplicar(dtoIn: AplicarConfigPreciosIaDto & HeaderParamsDto) {
     dtoIn.configuraciones.forEach((c, i) => {
       if (c.exacta) {
-        if (c.modo !== 'fijo' || c.rango1 <= 0) {
+        if (c.rango1 <= 0) {
           throw new BadRequestException(`La cantidad exacta de la configuración ${i + 1} no es válida`);
         }
       } else if (c.rango_infinito ? c.rango2 != null : c.rango2 == null || c.rango2 < c.rango1) {
