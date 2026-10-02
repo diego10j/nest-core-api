@@ -108,8 +108,9 @@ Prácticamente nada. Lo que `depcheck`/búsqueda marcan es **falso positivo**:
 - Los 14 altos restantes vienen de Nest 10 (`path-to-regexp` por `serve-static`, `lodash`/`js-yaml` por `swagger`, `multer` por `platform-express`) y de `sharp` 0.33: se resuelven en las fases 3 y 4.
 
 ### Fase 2 – front (HECHA salvo `xlsx`, rama `claude/front-deps-fase1`)
-- Subidas: `react-map-gl` 8.1.3, `@vitejs/plugin-react-swc` 4, `vite-plugin-checker` 0.14, `mui-one-time-password-input` 7, `globals` 17 y menores/parches (`eslint`, `prettier`, `react-hook-form`, `socket.io-client`, `@types/node`, `emoji-picker-react`, MUI y MUI X dentro de su mayor).
+- Subidas: `react-map-gl` 8.1.3, `vite-plugin-checker` 0.14, `mui-one-time-password-input` 7, `globals` 17 y menores/parches (`eslint`, `prettier`, `react-hook-form`, `socket.io-client`, `@types/node`, `emoji-picker-react`, MUI y MUI X dentro de su mayor).
 - **`typescript-eslint` y su parser se quedan en 8.50.1.** Con 8.71 la regla `@typescript-eslint/no-shadow` marca 46 errores falsos en patrones `const X = memo(function X() {})`, y como `vite-plugin-checker` 0.14 ejecuta ESLint durante `vite build`, el build fallaba. Retomar en la fase 7, junto con la revisión de la configuración de ESLint.
+- **`@vitejs/plugin-react-swc` vuelve a 3.11 (provisional).** Tras mezclar la fase 2, exportar en Facturas dejó el navegador sin recursos (`ERR_INSUFFICIENT_RESOURCES`, cientos de peticiones). Con el commit anterior a la fase 2 exporta bien. Del diff de dependencias, lo único que cambia el código generado en producción es el plugin de React/SWC; se revierte para probar. Si con eso deja de pasar, se queda en 3 y se reintenta en la fase 7 junto con Vite 8. Si sigue pasando, el siguiente sospechoso es `xlsx` 0.20.3 (instalado a mano).
 - **Pendiente manual – `xlsx`:** el CDN de SheetJS no es accesible desde el entorno de Claude (403 del proxy). Ejecutar en tu máquina:
   `yarn add https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`
   y probar los botones de exportar a Excel (`exportDataTable.tsx`).
