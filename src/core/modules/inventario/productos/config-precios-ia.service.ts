@@ -731,7 +731,7 @@ export class ConfigPreciosIaService {
       advertencias,
       configuraciones: propuestas.sort(
         (a, b) =>
-          (a.ide_cncfp ?? 99) - (b.ide_cncfp ?? 99) || a.rango1 - b.rango1 || Number(b.exacta) - Number(a.exacta),
+          (a.ide_cncfp ?? 99) - (b.ide_cncfp ?? 99) || Number(b.exacta) - Number(a.exacta) || a.rango1 - b.rango1,
       ),
     };
   }
