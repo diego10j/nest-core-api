@@ -1,178 +1,177 @@
--- Versión optimizada de la función f_generar_config_precios
--- Mejoras implementadas:
--- 1. Índices en tabla temporal para mejor performance
--- 2. Cálculo de percentiles optimizado (una sola consulta)
--- 3. Código refactorizado eliminando duplicación
--- 4. INSERT directo sin función auxiliar
--- 5. Validaciones mejoradas
--- 6. Mejor manejo de errores
+-- Genera la configuración de precios de venta de un artículo a partir de sus facturas en un período.
+--
+-- Cómo calcula (v3):
+--   1. Costo: el costo promedio ponderado móvil (PPMP) vigente a la fecha de cada factura, por sucursal; es el mismo
+--      que usa f_calcula_precio_venta, así el precio que se regenera es coherente con el que se configura.
+--   2. Precio de venta: el realmente cobrado por unidad (total de la línea / cantidad, ya con descuento), sin IVA. Si
+--      el precio de la línea incluye IVA (iva_inarti_ccdfa = -1) se divide con la tarifa de la propia factura.
+--      Se excluyen las ventas a los RUC 1719020883001 y 1793234926001 (traspasos por cambio de razón social).
+--   3. Utilidad: ponderada por costo, SUM(utilidad) / SUM(costo). Las líneas sin costo, de productos sin kardex o con
+--      nota de crédito NO entran al promedio.
+--   4. Rangos: el margen real baja de forma gradual y con ruido al subir la cantidad, así que no se corta cada vez que
+--      cambia un poco. Para cada forma de pago se buscan los cortes que mejor explican el margen (segmentación óptima por
+--      programación dinámica, error cuadrático ponderado por número de ventas) y solo se agrega un rango más si reduce
+--      el error más de lo que "cuesta" (p_tolerancia). Cada rango exige un mínimo de ventas (8 % de las del grupo, al
+--      menos 3) y hay un tope de p_max_rangos por forma de pago.
+--   5. Se configura por TIPO de pago (contado, crédito, tarjeta…), no por cada medio: las configuraciones quedan con
+--      ide_cncfp y sin ide_cndfp y el motor las aplica a todas las formas de ese tipo. Los tipos con pocas ventas
+--      (menos de 4 líneas válidas) se agrupan en una genérica («Otras formas de pago»). El total entre todos los tipos
+--      no pasa de p_max_total (15).
+--   6. Cobertura: los rangos son continuos (sin huecos): el primero parte de 0, cada uno termina justo antes del
+--      siguiente (inclusivo, con el paso de decimales del artículo) y el último es abierto (sin límite).
+--
+-- Solo reemplaza las configuraciones generadas antes por esta función (observación «Config automática…»); las
+-- creadas a mano se conservan. Devuelve cuántas configuraciones creó.
 
-CREATE OR REPLACE FUNCTION f_generar_config_precios(
-    id_empresa BIGINT,
-    p_ide_inarti INT,
-    p_fecha_inicio DATE,
-    p_fecha_fin DATE,
-    p_login TEXT DEFAULT 'sa'
-) RETURNS VOID AS $$
+DROP FUNCTION IF EXISTS f_generar_config_precios(BIGINT, INT, DATE, DATE, TEXT);
+DROP FUNCTION IF EXISTS f_generar_config_precios(BIGINT, INT, DATE, DATE, TEXT, NUMERIC);
+DROP FUNCTION IF EXISTS f_generar_config_precios(BIGINT, INT, DATE, DATE, TEXT, NUMERIC, INT, INT);
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- Segmenta una serie ordenada (nivel de cantidad → margen) en como máximo p_max_k tramos contiguos que minimizan
+-- el error cuadrático ponderado + p_lambda por tramo. Devuelve los índices (base 1) donde empieza cada tramo.
+CREATE OR REPLACE FUNCTION f_segmentar_margenes(
+    p_pesos     NUMERIC[],
+    p_margenes  NUMERIC[],
+    p_min_peso  NUMERIC,
+    p_max_k     INT,
+    p_lambda    NUMERIC
+) RETURNS INT[] AS $$
 DECLARE
-    v_count INT;
-    v_forma_pago RECORD;
-    v_ide_cncfp INT;
-    v_descripcion TEXT;
-    v_registros_insertados INT := 0;
-    
-    -- Record para almacenar percentiles calculados
-    v_percentiles RECORD;
-    v_min_cant NUMERIC;
-    v_max_cant NUMERIC;
-    v_avg_util NUMERIC;
+    n       INT := COALESCE(array_length(p_pesos, 1), 0);
+    inf     CONSTANT NUMERIC := 1e30;
+    pw      NUMERIC[] := ARRAY[0]::NUMERIC[];
+    pwm     NUMERIC[] := ARRAY[0]::NUMERIC[];
+    pwm2    NUMERIC[] := ARRAY[0]::NUMERIC[];
+    dp      NUMERIC[];
+    bk      INT[];
+    k       INT;
+    i       INT;
+    j       INT;
+    w       NUMERIC;
+    c       NUMERIC;
+    prev    NUMERIC;
+    mejor_k INT := 0;
+    mejor_c NUMERIC := inf;
+    total   NUMERIC;
+    res     INT[] := ARRAY[]::INT[];
 BEGIN
-    -- Validaciones de entrada
-    IF p_fecha_inicio > p_fecha_fin THEN
-        RAISE EXCEPTION 'Fecha inicio (%) no puede ser mayor que fecha fin (%)', 
-            p_fecha_inicio, p_fecha_fin;
-    END IF;
-    
-    IF p_fecha_fin > CURRENT_DATE THEN
-        RAISE WARNING 'Fecha fin (%) es futura, resultados pueden ser incompletos', p_fecha_fin;
+    IF n = 0 THEN
+        RETURN ARRAY[]::INT[];
     END IF;
 
-    -- Validar que el artículo existe
-    IF NOT EXISTS (SELECT 1 FROM inv_articulo WHERE ide_inarti = p_ide_inarti) THEN
+    FOR i IN 1..n LOOP
+        pw   := pw   || (pw[i]   + p_pesos[i]);
+        pwm  := pwm  || (pwm[i]  + p_pesos[i] * p_margenes[i]);
+        pwm2 := pwm2 || (pwm2[i] + p_pesos[i] * p_margenes[i] * p_margenes[i]);
+    END LOOP;
+
+    p_max_k := GREATEST(1, LEAST(p_max_k, n));
+    dp := array_fill(inf, ARRAY[(p_max_k + 1) * (n + 1)]);
+    bk := array_fill(0,   ARRAY[(p_max_k + 1) * (n + 1)]);
+    dp[1] := 0;  -- dp[k=0][j=0]
+
+    FOR k IN 1..p_max_k LOOP
+        FOR j IN k..n LOOP
+            FOR i IN k..j LOOP
+                prev := dp[(k - 1) * (n + 1) + (i - 1) + 1];
+                IF prev < inf THEN
+                    w := pw[j + 1] - pw[i];
+                    IF w >= p_min_peso THEN
+                        c := prev + (pwm2[j + 1] - pwm2[i]) - POWER(pwm[j + 1] - pwm[i], 2) / w;
+                        IF c < dp[k * (n + 1) + j + 1] THEN
+                            dp[k * (n + 1) + j + 1] := c;
+                            bk[k * (n + 1) + j + 1] := i;
+                        END IF;
+                    END IF;
+                END IF;
+            END LOOP;
+        END LOOP;
+    END LOOP;
+
+    -- Mejor cantidad de tramos: error + costo por tramo.
+    FOR k IN 1..p_max_k LOOP
+        c := dp[k * (n + 1) + n + 1];
+        IF c < inf AND c + k * p_lambda < mejor_c THEN
+            mejor_c := c + k * p_lambda;
+            mejor_k := k;
+        END IF;
+    END LOOP;
+
+    total := pw[n + 1];
+    IF mejor_k = 0 THEN
+        -- Ningún tramo cumple el mínimo de ventas: un solo rango con todo.
+        RETURN ARRAY[1];
+    END IF;
+
+    j := n;
+    FOR k IN REVERSE mejor_k..1 LOOP
+        i := bk[k * (n + 1) + j + 1];
+        res := i || res;
+        j := i - 1;
+    END LOOP;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- ---------------------------------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION f_generar_config_precios(
+    id_empresa      BIGINT,
+    p_ide_inarti    INT,
+    p_fecha_inicio  DATE,
+    p_fecha_fin     DATE,
+    p_login         TEXT    DEFAULT 'sa',
+    p_tolerancia    NUMERIC DEFAULT 5,   -- puntos de margen que justifican abrir un rango nuevo
+    p_max_rangos    INT     DEFAULT 5,   -- tope de rangos por forma de pago
+    p_min_ventas_fp INT     DEFAULT 4,   -- líneas válidas mínimas para tener configuración propia por tipo de pago
+    p_max_total     INT     DEFAULT 15   -- tope de configuraciones entre todos los tipos de pago
+) RETURNS INT AS $$
+DECLARE
+    v_count        INT;
+    v_grupo        RECORD;
+    v_ide_cncfp    INT;
+    v_descripcion  TEXT;
+    v_insertados   INT := 0;
+    v_decimales    INT;
+    v_grupos       INT;
+    v_max_grupo    INT;
+    v_paso         NUMERIC;
+
+    v_cants        NUMERIC[];
+    v_pesos        NUMERIC[];
+    v_margenes     NUMERIC[];
+    v_costos       NUMERIC[];
+    v_utils        NUMERIC[];
+    v_total_pesos  NUMERIC;
+    v_min_peso     NUMERIC;
+    v_inicios      INT[];
+    v_n            INT;
+    t              INT;
+    i              INT;
+    v_desde        INT;
+    v_hasta        INT;
+    v_costo        NUMERIC;
+    v_util         NUMERIC;
+    v_validas      NUMERIC;
+    v_siguiente    NUMERIC;
+BEGIN
+    IF p_fecha_inicio > p_fecha_fin THEN
+        RAISE EXCEPTION 'Fecha inicio (%) no puede ser mayor que fecha fin (%)', p_fecha_inicio, p_fecha_fin;
+    END IF;
+
+    SELECT COALESCE(decim_stock_inarti, 2) INTO v_decimales FROM inv_articulo WHERE ide_inarti = p_ide_inarti;
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'El artículo con ID % no existe', p_ide_inarti;
     END IF;
+    v_paso := POWER(10::NUMERIC, -v_decimales);
 
-    -- Crear tabla temporal con datos de ventas, considerando si el detalle tiene IVA o no
+    DROP TABLE IF EXISTS temp_ventas_producto;
+
+    -- Una fila por línea de factura, con costo PPMP, precio neto sin IVA y la marca de si cuenta para el margen.
     CREATE TEMP TABLE temp_ventas_producto AS
-    WITH
-    compras_periodo AS (
+    WITH facturas_con_nota AS (
         SELECT
-            d.ide_inarti AS cp_ide_inarti,
-            c.fecha_trans_incci AS cp_fecha_trans,
-            d.precio_indci AS cp_precio
-        FROM inv_det_comp_inve d
-        JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
-        JOIN inv_tip_tran_inve t ON c.ide_intti = t.ide_intti
-        JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
-        WHERE
-            c.ide_inepi = 1
-            AND c.fecha_trans_incci BETWEEN p_fecha_inicio - INTERVAL '5 days' AND p_fecha_fin + INTERVAL '5 days'
-            AND e.signo_intci = 1
-            AND d.precio_indci > 0
-            AND c.ide_intti IN (19, 16, 3025)
-            AND d.ide_inarti = p_ide_inarti
-            AND c.ide_empr = id_empresa
-    ),
-    ultima_compra_fuera_periodo AS (
-        SELECT 
-            d.ide_inarti AS uc_ide_inarti,
-            c.fecha_trans_incci AS uc_fecha_trans,
-            d.precio_indci AS uc_precio,
-            ROW_NUMBER() OVER (PARTITION BY d.ide_inarti ORDER BY c.fecha_trans_incci DESC) as rn
-        FROM inv_det_comp_inve d
-        JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
-        JOIN inv_tip_tran_inve t ON c.ide_intti = t.ide_intti
-        JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
-        WHERE
-            c.ide_inepi = 1
-            AND e.signo_intci = 1
-            AND d.precio_indci > 0
-            AND c.ide_intti IN (19, 16, 3025)
-            AND c.fecha_trans_incci < p_fecha_inicio - INTERVAL '5 days'
-            AND d.ide_inarti = p_ide_inarti
-            AND c.ide_empr = id_empresa
-    ),
-    precios_articulos AS (
-        SELECT
-            cdf.ide_ccdfa,
-            cdf.ide_inarti AS art_id,
-            cf.fecha_emisi_cccfa AS fec_emision,
-            COALESCE(
-                (SELECT pc.cp_precio
-                 FROM compras_periodo pc
-                 WHERE pc.cp_ide_inarti = cdf.ide_inarti
-                   AND pc.cp_fecha_trans > cf.fecha_emisi_cccfa
-                   AND pc.cp_fecha_trans <= (cf.fecha_emisi_cccfa + INTERVAL '5 days')
-                 ORDER BY pc.cp_fecha_trans ASC
-                 LIMIT 1),
-                (SELECT pc.cp_precio
-                 FROM compras_periodo pc
-                 WHERE pc.cp_ide_inarti = cdf.ide_inarti
-                   AND pc.cp_fecha_trans <= cf.fecha_emisi_cccfa
-                 ORDER BY pc.cp_fecha_trans DESC
-                 LIMIT 1),
-                (SELECT uc.uc_precio
-                 FROM ultima_compra_fuera_periodo uc
-                 WHERE uc.uc_ide_inarti = cdf.ide_inarti AND uc.rn = 1
-                 LIMIT 1),
-                0
-            ) AS precio_compra,
-            COALESCE(
-                (SELECT pc.cp_fecha_trans
-                 FROM compras_periodo pc
-                 WHERE pc.cp_ide_inarti = cdf.ide_inarti
-                   AND pc.cp_fecha_trans > cf.fecha_emisi_cccfa
-                   AND pc.cp_fecha_trans <= (cf.fecha_emisi_cccfa + INTERVAL '5 days')
-                 ORDER BY pc.cp_fecha_trans ASC
-                 LIMIT 1),
-                (SELECT pc.cp_fecha_trans
-                 FROM compras_periodo pc
-                 WHERE pc.cp_ide_inarti = cdf.ide_inarti
-                   AND pc.cp_fecha_trans <= cf.fecha_emisi_cccfa
-                 ORDER BY pc.cp_fecha_trans DESC
-                 LIMIT 1),
-                (SELECT uc.uc_fecha_trans
-                 FROM ultima_compra_fuera_periodo uc
-                 WHERE uc.uc_ide_inarti = cdf.ide_inarti AND uc.rn = 1
-                 LIMIT 1),
-                NULL
-            ) AS fecha_ultima_compra
-        FROM cxc_deta_factura cdf
-        JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-        WHERE
-            cf.ide_ccefa = 0
-            AND cf.fecha_emisi_cccfa BETWEEN p_fecha_inicio AND p_fecha_fin
-            AND cf.ide_empr = id_empresa
-            AND cdf.ide_inarti = p_ide_inarti
-    ),
-    datos_completos AS (
-        SELECT
-            cdf.ide_inarti,
-            cdf.ide_ccdfa,
-            cf.fecha_emisi_cccfa,
-            cf.secuencial_cccfa,
-            per.nom_geper,
-            iart.nombre_inarti,
-            cdf.cantidad_ccdfa,
-            uni.siglas_inuni,
-            cdf.precio_ccdfa AS precio_venta,
-            cdf.total_ccdfa,
-            ven.nombre_vgven,
-            iart.hace_kardex_inarti,
-            cf.ide_cndfp1 AS ide_cndfp,
-            fp.nombre_cndfp,
-            fp.dias_cndfp,
-            pa.precio_compra,
-            pa.fecha_ultima_compra,
-            cdf.iva_inarti_ccdfa
-        FROM cxc_deta_factura cdf
-        JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-        JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
-        JOIN gen_persona per ON cf.ide_geper = per.ide_geper
-        LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
-        LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-        LEFT JOIN con_deta_forma_pago fp ON cf.ide_cndfp1 = fp.ide_cndfp
-        LEFT JOIN precios_articulos pa ON pa.ide_ccdfa = cdf.ide_ccdfa AND pa.art_id = cdf.ide_inarti
-        WHERE
-            cf.ide_ccefa = 0
-            AND cf.fecha_emisi_cccfa BETWEEN p_fecha_inicio AND p_fecha_fin
-            AND cf.ide_empr = id_empresa
-            AND cdf.ide_inarti = p_ide_inarti
-    ),
-    facturas_con_nota AS (
-        SELECT 
             lpad(cf.secuencial_cccfa::text, 9, '0') AS secuencial_padded,
-            cdn.ide_inarti,
             SUM(cdn.valor_cpdno) AS valor_nota_credito
         FROM cxp_cabecera_nota cn
         JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
@@ -182,214 +181,189 @@ BEGIN
           AND cdn.ide_inarti = p_ide_inarti
           AND cn.ide_empr = cf.ide_empr
           AND cn.ide_sucu = cf.ide_sucu
-        GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti
+        GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0')
+    ),
+    lineas AS (
+        SELECT
+            cdf.ide_ccdfa,
+            cdf.cantidad_ccdfa,
+            fpg.ide_cncfp AS ide_cncfp,
+            iart.hace_kardex_inarti,
+            COALESCE(fn.valor_nota_credito, 0) AS nota_credito,
+            ppmp.costo_unitario AS costo,
+            cdf.total_ccdfa / NULLIF(cdf.cantidad_ccdfa, 0) AS precio_neto,
+            1 + COALESCE(NULLIF(CASE WHEN cf.tarifa_iva_cccfa > 1 THEN cf.tarifa_iva_cccfa / 100
+                                     ELSE cf.tarifa_iva_cccfa END, 0), 0.15) AS factor_iva,
+            cdf.iva_inarti_ccdfa
+        FROM cxc_deta_factura cdf
+        JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+        JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+        JOIN gen_persona per ON per.ide_geper = cf.ide_geper
+        LEFT JOIN con_deta_forma_pago fpg ON fpg.ide_cndfp = cf.ide_cndfp1
+        LEFT JOIN facturas_con_nota fn ON fn.secuencial_padded = lpad(cf.secuencial_cccfa::text, 9, '0')
+        LEFT JOIN LATERAL (
+            SELECT p.costo_unitario
+            FROM f_costo_unitario_ppmp(id_empresa, cf.ide_sucu, cdf.ide_inarti, cf.fecha_emisi_cccfa) p
+        ) ppmp ON TRUE
+        WHERE cf.ide_ccefa = 0
+          AND cf.fecha_emisi_cccfa BETWEEN p_fecha_inicio AND p_fecha_fin
+          AND cf.ide_empr = id_empresa
+          AND cdf.ide_inarti = p_ide_inarti
+          AND cdf.cantidad_ccdfa > 0
+          -- Traspasos por cambio de razón social (persona natural → jurídica): no son ventas reales y distorsionan
+          -- el margen. Se excluyen las ventas hechas a cualquiera de los dos RUC.
+          AND per.identificac_geper NOT IN ('1719020883001', '1793234926001')
     )
     SELECT
-        dc.ide_ccdfa,
-        dc.ide_inarti,        
-        dc.fecha_emisi_cccfa,
-        dc.secuencial_cccfa,
-        dc.nom_geper,
-        dc.nombre_inarti,
-        dc.cantidad_ccdfa,
-        dc.siglas_inuni,
-        -- Normalizar precio_venta: si iva_inarti_ccdfa = -1 el precio incluye IVA y debe dividirse
-        CASE WHEN dc.iva_inarti_ccdfa = -1 THEN ROUND(dc.precio_venta / 1.12, 4) ELSE dc.precio_venta END AS precio_venta,
-        dc.total_ccdfa,
-        dc.nombre_vgven,
-        dc.hace_kardex_inarti,
-        dc.precio_compra,
-        -- Utilidad: solo si hace kardex y no tiene nota de crédito
-        CASE
-            WHEN dc.hace_kardex_inarti = false OR COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 0
-            ELSE (CASE WHEN dc.iva_inarti_ccdfa = -1 THEN ROUND(dc.precio_venta / 1.12, 4) ELSE dc.precio_venta END - dc.precio_compra)
-        END AS utilidad,
-        CASE
-            WHEN dc.hace_kardex_inarti = false OR COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 0
-            ELSE ROUND((CASE WHEN dc.iva_inarti_ccdfa = -1 THEN ROUND(dc.precio_venta / 1.12, 4) ELSE dc.precio_venta END - dc.precio_compra) * dc.cantidad_ccdfa, 2)
-        END AS utilidad_neta,
-        CASE
-            WHEN dc.hace_kardex_inarti = false OR COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 0
-            WHEN dc.precio_compra > 0 THEN ROUND(((CASE WHEN dc.iva_inarti_ccdfa = -1 THEN ROUND(dc.precio_venta / 1.12, 4) ELSE dc.precio_venta END - dc.precio_compra) / dc.precio_compra) * 100, 2)
-            ELSE 0
-        END AS porcentaje_utilidad,
-        COALESCE(fn.valor_nota_credito, 0) AS nota_credito,
-        dc.fecha_ultima_compra,
-        dc.ide_cndfp::BIGINT,
-        dc.nombre_cndfp,
-        dc.dias_cndfp::BIGINT
-    FROM datos_completos dc
-    LEFT JOIN facturas_con_nota fn ON lpad(dc.secuencial_cccfa::text, 9, '0') = fn.secuencial_padded 
-                                   AND dc.ide_inarti = fn.ide_inarti;
+        l.ide_ccdfa,
+        l.cantidad_ccdfa,
+        l.ide_cncfp,
+        l.costo,
+        CASE WHEN l.iva_inarti_ccdfa = -1 THEN l.precio_neto / l.factor_iva ELSE l.precio_neto END AS precio_sin_iva,
+        (l.hace_kardex_inarti IS TRUE AND COALESCE(l.costo, 0) > 0 AND l.nota_credito = 0 AND l.precio_neto > 0) AS valida,
+        l.ide_cncfp AS grupo
+    FROM lineas l;
 
-    -- Verificar que hay datos
     GET DIAGNOSTICS v_count = ROW_COUNT;
     IF v_count = 0 THEN
         DROP TABLE temp_ventas_producto;
-        RAISE EXCEPTION 'No hay datos de ventas para el artículo % en el período % a %', 
+        RAISE EXCEPTION 'No hay datos de ventas para el artículo % en el período % a %',
             p_ide_inarti, p_fecha_inicio, p_fecha_fin;
     END IF;
-    
-    -- Crear índices en tabla temporal para mejorar performance
-    CREATE INDEX idx_temp_ventas_forma_pago ON temp_ventas_producto(ide_cndfp);
-    CREATE INDEX idx_temp_ventas_cantidad ON temp_ventas_producto(ide_cndfp, cantidad_ccdfa);
-    ANALYZE temp_ventas_producto;
 
-    -- Eliminar todas las configuraciones previas del artículo
-    DELETE FROM inv_conf_precios_articulo 
-    WHERE ide_inarti = p_ide_inarti;
+    IF NOT EXISTS (SELECT 1 FROM temp_ventas_producto WHERE valida) THEN
+        DROP TABLE temp_ventas_producto;
+        RAISE EXCEPTION 'Las ventas del período no tienen costo en kardex: no se puede calcular la utilidad (artículo %)',
+            p_ide_inarti;
+    END IF;
+
+    -- Tipos de pago con pocas ventas válidas se agrupan en la configuración genérica (grupo NULL).
+    UPDATE temp_ventas_producto t
+    SET grupo = NULL
+    WHERE t.ide_cncfp IS NULL
+       OR t.ide_cncfp IN (
+            SELECT ide_cncfp FROM temp_ventas_producto
+            WHERE ide_cncfp IS NOT NULL
+            GROUP BY ide_cncfp
+            HAVING COUNT(*) FILTER (WHERE valida) < p_min_ventas_fp
+       );
+
+    -- Diagnóstico: líneas válidas por tipo de pago (NULL = genérica).
+    FOR v_grupo IN
+        SELECT grupo, COUNT(*) AS lineas, COUNT(*) FILTER (WHERE valida) AS validas
+        FROM temp_ventas_producto GROUP BY grupo ORDER BY grupo NULLS LAST
+    LOOP
+        RAISE NOTICE 'Tipo de pago % (NULL = genérica): % líneas, % válidas', v_grupo.grupo, v_grupo.lineas, v_grupo.validas;
+    END LOOP;
+
+    -- El tope total se reparte entre los grupos que quedan (contado, crédito, …).
+    SELECT COUNT(DISTINCT grupo) + (CASE WHEN EXISTS (SELECT 1 FROM temp_ventas_producto WHERE grupo IS NULL AND valida) THEN 1 ELSE 0 END)
+      INTO v_grupos FROM temp_ventas_producto;
+    v_max_grupo := GREATEST(1, LEAST(p_max_rangos, p_max_total / GREATEST(v_grupos, 1)));
+
+    -- Solo se reemplazan las configuraciones generadas automáticamente; las manuales se conservan.
+    DELETE FROM inv_conf_precios_articulo
+    WHERE ide_inarti = p_ide_inarti
+      AND observacion_incpa LIKE 'Config automática%';
 
     v_descripcion := 'Config automática ' || p_fecha_inicio || ' a ' || p_fecha_fin;
 
-    -- Procesar por forma de pago
-    FOR v_forma_pago IN 
-        SELECT DISTINCT ide_cndfp, nombre_cndfp 
-        FROM temp_ventas_producto 
-        WHERE ide_cndfp IS NOT NULL
-        ORDER BY ide_cndfp
+    FOR v_grupo IN
+        SELECT DISTINCT grupo FROM temp_ventas_producto ORDER BY grupo NULLS LAST
     LOOP
         BEGIN
-            -- Obtener configuración de forma de pago
-            SELECT ide_cncfp INTO v_ide_cncfp 
-            FROM con_deta_forma_pago 
-            WHERE ide_cndfp = v_forma_pago.ide_cndfp;
+            v_ide_cncfp := v_grupo.grupo;
 
-                        -- Obtener las cantidades más vendidas (top 5) para definir los cortes de rango
-                        CREATE TEMP TABLE temp_top_cantidades AS
-                        SELECT cantidad_ccdfa, COUNT(*) AS ventas
-                        FROM temp_ventas_producto
-                        WHERE ide_cndfp = v_forma_pago.ide_cndfp
-                        GROUP BY cantidad_ccdfa
-                        ORDER BY ventas DESC, cantidad_ccdfa
-                        LIMIT 5;
+            -- Una fila por cantidad vendida (solo líneas válidas), con su margen real y su peso (nº de ventas).
+            SELECT
+                array_agg(cant ORDER BY cant),
+                array_agg(validas ORDER BY cant),
+                array_agg(ROUND(util_total / costo_total * 100, 6) ORDER BY cant),
+                array_agg(costo_total ORDER BY cant),
+                array_agg(util_total ORDER BY cant)
+            INTO v_cants, v_pesos, v_margenes, v_costos, v_utils
+            FROM (
+                SELECT
+                    cantidad_ccdfa AS cant,
+                    COUNT(*)::NUMERIC AS validas,
+                    SUM(costo * cantidad_ccdfa) AS costo_total,
+                    SUM((precio_sin_iva - costo) * cantidad_ccdfa) AS util_total
+                FROM temp_ventas_producto
+                WHERE grupo IS NOT DISTINCT FROM v_grupo.grupo
+                  AND valida
+                GROUP BY cantidad_ccdfa
+            ) n;
 
-                        -- Obtener los cortes de los rangos (ordenados de menor a mayor)
-                        CREATE TEMP TABLE temp_cortes_rango AS
-                        SELECT cantidad_ccdfa FROM temp_top_cantidades ORDER BY cantidad_ccdfa;
+            v_n := COALESCE(array_length(v_cants, 1), 0);
+            -- Un grupo con muy pocas ventas válidas no da una utilidad confiable.
+            IF v_n = 0 OR (SELECT SUM(x) FROM unnest(v_pesos) x) < 3 THEN
+                CONTINUE;
+            END IF;
 
-                        -- Si no hay suficientes cortes, usar min y max
-                        SELECT MIN(cantidad_ccdfa), MAX(cantidad_ccdfa), AVG(porcentaje_utilidad)
-                            INTO v_min_cant, v_max_cant, v_avg_util
-                        FROM temp_ventas_producto
-                        WHERE ide_cndfp = v_forma_pago.ide_cndfp;
+            SELECT SUM(x) INTO v_total_pesos FROM unnest(v_pesos) x;
+            v_min_peso := GREATEST(3, CEIL(v_total_pesos * 0.08));
 
-                        -- Validar si hay datos para esta forma de pago
-                        IF v_min_cant IS NULL THEN
-                            DROP TABLE IF EXISTS temp_top_cantidades;
-                            DROP TABLE IF EXISTS temp_cortes_rango;
-                            CONTINUE;
-                        END IF;
+            v_inicios := f_segmentar_margenes(
+                v_pesos, v_margenes, v_min_peso, v_max_grupo, p_tolerancia * p_tolerancia * v_min_peso
+            );
 
-                        -- Insertar rangos entre los cortes
-                        WITH cortes AS (
-                            SELECT cantidad_ccdfa, LEAD(cantidad_ccdfa) OVER (ORDER BY cantidad_ccdfa) AS siguiente
-                            FROM temp_cortes_rango
-                        )
-                        INSERT INTO inv_conf_precios_articulo (
-                            ide_incpa,
-                            ide_inarti,
-                            rangos_incpa,
-                            rango1_cant_incpa,
-                            rango2_cant_incpa,
-                            ide_empr,
-                            porcentaje_util_incpa,
-                            activo_incpa,
-                            rango_infinito_incpa,
-                            usuario_ingre,
-                            ide_cndfp,
-                            ide_cncfp,
-                            observacion_incpa
-                        )
-                        SELECT 
-                            get_seq_table('inv_conf_precios_articulo', 'ide_incpa', 1, p_login),
-                            p_ide_inarti,
-                            TRUE,
-                            c.cantidad_ccdfa,
-                            c.siguiente,
-                            id_empresa,
-                            ROUND(COALESCE((SELECT AVG(porcentaje_utilidad) FROM temp_ventas_producto WHERE ide_cndfp = v_forma_pago.ide_cndfp AND cantidad_ccdfa >= c.cantidad_ccdfa AND (c.siguiente IS NULL OR cantidad_ccdfa < c.siguiente)), v_avg_util), 2),
-                            TRUE,
-                            FALSE,
-                            p_login,
-                            v_forma_pago.ide_cndfp,
-                            v_ide_cncfp,
-                            v_descripcion || ' (' || v_forma_pago.nombre_cndfp || ')'
-                        FROM cortes c
-                        WHERE c.siguiente IS NOT NULL;
+            FOR t IN 1..array_length(v_inicios, 1) LOOP
+                v_desde := v_inicios[t];
+                v_hasta := CASE WHEN t < array_length(v_inicios, 1) THEN v_inicios[t + 1] - 1 ELSE v_n END;
+                v_costo := 0; v_util := 0; v_validas := 0;
+                FOR i IN v_desde..v_hasta LOOP
+                    v_costo := v_costo + v_costos[i];
+                    v_util := v_util + v_utils[i];
+                    v_validas := v_validas + v_pesos[i];
+                END LOOP;
+                v_siguiente := CASE WHEN t < array_length(v_inicios, 1) THEN v_cants[v_inicios[t + 1]] ELSE NULL END;
 
-                        -- Rango infinito (mayores al último corte)
-                        INSERT INTO inv_conf_precios_articulo (
-                            ide_incpa,
-                            ide_inarti,
-                            rangos_incpa,
-                            rango1_cant_incpa,
-                            rango2_cant_incpa,
-                            ide_empr,
-                            porcentaje_util_incpa,
-                            activo_incpa,
-                            rango_infinito_incpa,
-                            usuario_ingre,
-                            ide_cndfp,
-                            ide_cncfp,
-                            observacion_incpa
-                        )
-                        SELECT 
-                            get_seq_table('inv_conf_precios_articulo', 'ide_incpa', 1, p_login),
-                            p_ide_inarti,
-                            TRUE,
-                            (SELECT MAX(cantidad_ccdfa) FROM temp_cortes_rango),
-                            NULL,
-                            id_empresa,
-                            ROUND(COALESCE((SELECT AVG(porcentaje_utilidad) FROM temp_ventas_producto WHERE ide_cndfp = v_forma_pago.ide_cndfp AND cantidad_ccdfa >= (SELECT MAX(cantidad_ccdfa) FROM temp_cortes_rango)), v_avg_util), 2),
-                            TRUE,
-                            TRUE,
-                            p_login,
-                            v_forma_pago.ide_cndfp,
-                            v_ide_cncfp,
-                            v_descripcion || ' (' || v_forma_pago.nombre_cndfp || ') - Infinito'
-                        ;
+                INSERT INTO inv_conf_precios_articulo (
+                    ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa, ide_empr,
+                    porcentaje_util_incpa, activo_incpa, rango_infinito_incpa, usuario_ingre, ide_cndfp, ide_cncfp,
+                    observacion_incpa
+                )
+                VALUES (
+                    get_seq_table('inv_conf_precios_articulo', 'ide_incpa', 1, p_login),
+                    p_ide_inarti,
+                    TRUE,
+                    CASE WHEN t = 1 THEN 0 ELSE v_cants[v_desde] END,
+                    CASE WHEN v_siguiente IS NULL THEN NULL ELSE v_siguiente - v_paso END,
+                    id_empresa,
+                    ROUND(v_util / v_costo * 100, 2),
+                    TRUE,
+                    v_siguiente IS NULL,
+                    p_login,
+                    NULL,           -- aplica a todos los medios de pago del tipo
+                    v_ide_cncfp,
+                    v_descripcion || ' (' ||
+                        COALESCE((SELECT nombre_cncfp FROM con_cabece_forma_pago WHERE ide_cncfp = v_grupo.grupo),
+                                 'Otras formas de pago') || ', ' || v_validas::INT || ' ventas)'
+                );
+                v_insertados := v_insertados + 1;
+            END LOOP;
 
-                        GET DIAGNOSTICS v_count = ROW_COUNT;
-                        v_registros_insertados := v_registros_insertados + v_count;
-
-                        DROP TABLE IF EXISTS temp_top_cantidades;
-                        DROP TABLE IF EXISTS temp_cortes_rango;
-            
         EXCEPTION
             WHEN OTHERS THEN
-                RAISE WARNING 'Error procesando forma de pago "%" (ID: %): % [SQL: %]', 
-                    v_forma_pago.nombre_cndfp, 
-                    v_forma_pago.ide_cndfp,
-                    SQLERRM,
-                    SQLSTATE;
-                CONTINUE;
+                RAISE WARNING 'Error procesando forma de pago (ID: %): % [SQL: %]', v_grupo.grupo, SQLERRM, SQLSTATE;
         END;
     END LOOP;
 
-    DROP TABLE temp_ventas_producto;
-    
-    -- Verificar que se insertaron registros
-    IF v_registros_insertados = 0 THEN
+    DROP TABLE IF EXISTS temp_ventas_producto;
+
+    IF v_insertados = 0 THEN
         RAISE EXCEPTION 'No se pudo generar ninguna configuración de precios. Revisar warnings anteriores.';
     END IF;
-    
-    -- Contar el total real de registros para el artículo
-    SELECT COUNT(*) INTO v_registros_insertados FROM inv_conf_precios_articulo WHERE ide_inarti = p_ide_inarti;
-    RAISE NOTICE 'Configuración completada: % registros en total para artículo %', 
-        v_registros_insertados, p_ide_inarti;
-    
+
+    RETURN v_insertados;
+
 EXCEPTION
     WHEN OTHERS THEN
         DROP TABLE IF EXISTS temp_ventas_producto;
-        RAISE EXCEPTION 'ERROR en f_generar_config_precios (Artículo: %, Período: % a %): % [SQL: %]', 
+        RAISE EXCEPTION 'ERROR en f_generar_config_precios (Artículo: %, Período: % a %): % [SQL: %]',
             p_ide_inarti, p_fecha_inicio, p_fecha_fin, SQLERRM, SQLSTATE;
 END;
 $$ LANGUAGE plpgsql;
 
-
-
---SELECT f_generar_config_precios(0, 1704, '2025-01-01', '2025-12-31');
-
--- Ver los resultados
---SELECT * FROM inv_conf_precios_articulo WHERE ide_inarti = 1704 ORDER BY rango1_cant_incpa;
-
+-- SELECT f_generar_config_precios(0, 1704, '2026-01-01', '2026-12-31');
+-- SELECT * FROM inv_conf_precios_articulo WHERE ide_inarti = 1704 ORDER BY ide_cncfp NULLS LAST, rango1_cant_incpa;

@@ -57,6 +57,12 @@ BEGIN
     END IF;
     v_iva_factor := v_iva / 100;
 
+    -- Tipo de pago (contado, crédito, tarjeta…) de la forma de pago pedida: las configuraciones guardadas solo por tipo
+    -- (sin medio de pago) aplican a todas las formas de ese tipo.
+    IF p_ide_cndfp IS NOT NULL THEN
+        SELECT fp.ide_cncfp INTO v_ide_cncfp FROM con_deta_forma_pago fp WHERE fp.ide_cndfp = p_ide_cndfp;
+    END IF;
+
     -- Obtener decimales del artículo
     SELECT decim_stock_inarti INTO v_decim_stock_inarti 
     FROM inv_articulo 
@@ -113,7 +119,7 @@ BEGIN
       -- Filtro de forma de pago CORREGIDO
       AND (
           -- Si se especifica forma de pago, buscar solo esa o genéricas (NULL)
-          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR ide_cndfp IS NULL))
+          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR (ide_cndfp IS NULL AND (ide_cncfp IS NULL OR ide_cncfp = v_ide_cncfp))))
           OR
           -- Si NO se especifica forma de pago, aceptar CUALQUIER configuración
           (p_ide_cndfp IS NULL)
@@ -121,8 +127,9 @@ BEGIN
     ORDER BY 
         CASE 
             WHEN p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp THEN 0  -- Forma de pago exacta
-            WHEN ide_cndfp IS NULL THEN 1                                      -- Forma de pago genérica
-            ELSE 2                                                             -- Otras formas de pago
+            WHEN ide_cndfp IS NULL AND ide_cncfp = v_ide_cncfp THEN 1      -- Mismo tipo de pago (contado, crédito…)
+            WHEN ide_cndfp IS NULL THEN 2                                      -- Forma de pago genérica
+            ELSE 3                                                             -- Otras formas de pago
         END
     LIMIT 1;
 
@@ -186,7 +193,7 @@ BEGIN
       -- Filtro de forma de pago CORREGIDO
       AND (
           -- Si se especifica forma de pago, buscar solo esa o genéricas (NULL)
-          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR ide_cndfp IS NULL))
+          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR (ide_cndfp IS NULL AND (ide_cncfp IS NULL OR ide_cncfp = v_ide_cncfp))))
           OR
           -- Si NO se especifica forma de pago, aceptar CUALQUIER configuración
           (p_ide_cndfp IS NULL)
@@ -195,8 +202,9 @@ BEGIN
         -- Priorizar forma de pago específica sobre genérica
         CASE 
             WHEN p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp THEN 0  -- Forma de pago exacta
-            WHEN ide_cndfp IS NULL THEN 1                                      -- Forma de pago genérica
-            ELSE 2                                                             -- Otras formas de pago
+            WHEN ide_cndfp IS NULL AND ide_cncfp = v_ide_cncfp THEN 1      -- Mismo tipo de pago (contado, crédito…)
+            WHEN ide_cndfp IS NULL THEN 2                                      -- Forma de pago genérica
+            ELSE 3                                                             -- Otras formas de pago
         END,
         -- Priorizar el rango más ajustado (menor límite inferior)
         rango1_cant_incpa DESC
@@ -266,7 +274,7 @@ BEGIN
       -- Filtro de forma de pago CORREGIDO
       AND (
           -- Si se especifica forma de pago, buscar solo esa o genéricas (NULL)
-          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR ide_cndfp IS NULL))
+          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR (ide_cndfp IS NULL AND (ide_cncfp IS NULL OR ide_cncfp = v_ide_cncfp))))
           OR
           -- Si NO se especifica forma de pago, aceptar CUALQUIER configuración
           (p_ide_cndfp IS NULL)
@@ -275,8 +283,9 @@ BEGIN
         -- Priorizar forma de pago específica sobre genérica
         CASE 
             WHEN p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp THEN 0  -- Forma de pago exacta
-            WHEN ide_cndfp IS NULL THEN 1                                      -- Forma de pago genérica
-            ELSE 2                                                             -- Otras formas de pago
+            WHEN ide_cndfp IS NULL AND ide_cncfp = v_ide_cncfp THEN 1      -- Mismo tipo de pago (contado, crédito…)
+            WHEN ide_cndfp IS NULL THEN 2                                      -- Forma de pago genérica
+            ELSE 3                                                             -- Otras formas de pago
         END,
         -- Buscar la cantidad más cercana
         ABS(p_cantidad - rango1_cant_incpa)
@@ -323,7 +332,7 @@ BEGIN
       -- Filtro de forma de pago CORREGIDO
       AND (
           -- Si se especifica forma de pago, buscar solo esa o genéricas (NULL)
-          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR ide_cndfp IS NULL))
+          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR (ide_cndfp IS NULL AND (ide_cncfp IS NULL OR ide_cncfp = v_ide_cncfp))))
           OR
           -- Si NO se especifica forma de pago, aceptar CUALQUIER configuración
           (p_ide_cndfp IS NULL)
@@ -332,8 +341,9 @@ BEGIN
         -- Priorizar forma de pago específica sobre genérica
         CASE 
             WHEN p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp THEN 0  -- Forma de pago exacta
-            WHEN ide_cndfp IS NULL THEN 1                                      -- Forma de pago genérica
-            ELSE 2                                                             -- Otras formas de pago
+            WHEN ide_cndfp IS NULL AND ide_cncfp = v_ide_cncfp THEN 1      -- Mismo tipo de pago (contado, crédito…)
+            WHEN ide_cndfp IS NULL THEN 2                                      -- Forma de pago genérica
+            ELSE 3                                                             -- Otras formas de pago
         END,
         -- Buscar el rango más cercano
         ABS(p_cantidad - rango1_cant_incpa)

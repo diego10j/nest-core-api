@@ -40,6 +40,37 @@ export class GptService {
 
   // Solo va a llamar casos de uso
 
+  /**
+   * Respuesta JSON estructurada: el modelo está obligado a devolver exactamente el esquema indicado (Structured
+   * Outputs), por lo que el resultado se puede parsear sin limpiar texto. Temperatura baja: es análisis, no creatividad.
+   */
+  async jsonEstructurado<T>(opts: {
+    system: string;
+    user: string;
+    schemaName: string;
+    schema: Record<string, unknown>;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+  }): Promise<T> {
+    const completion = await this.openai.chat.completions.create({
+      model: opts.model ?? 'gpt-4o',
+      temperature: opts.temperature ?? 0.1,
+      max_tokens: opts.maxTokens ?? 3000,
+      messages: [
+        { role: 'system', content: opts.system },
+        { role: 'user', content: opts.user },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: opts.schemaName, strict: true, schema: opts.schema },
+      },
+    });
+    const contenido = completion.choices[0]?.message?.content;
+    if (!contenido) throw new Error('El modelo no devolvió contenido');
+    return JSON.parse(contenido) as T;
+  }
+
   async orthographyCheck(orthographyDto: OrthographyDto) {
     return await orthographyCheckUseCase(this.openai, {
       prompt: orthographyDto.prompt,

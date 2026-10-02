@@ -9,7 +9,9 @@ import { Auth } from 'src/core/auth';
 
 import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
 
+import { ConfigPreciosIaService } from './config-precios-ia.service';
 import { ConfigPreciosProductosService } from './config-precios.service';
+import { AplicarConfigPreciosIaDto, ProponerConfigPreciosIaDto } from './dto/config-precios-ia.dto';
 import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
@@ -38,6 +40,7 @@ export class ProductosController {
   constructor(
     private readonly productos: ProductosService,
     private readonly configPrecios: ConfigPreciosProductosService,
+    private readonly configPreciosIa: ConfigPreciosIaService,
   ) { }
 
   @Get('getProductoByUuid')
@@ -340,6 +343,20 @@ export class ProductosController {
       ...headersParams,
       ...dtoIn,
     });
+  }
+
+  @Post('proponerConfigPreciosIA')
+  @ApiOperation({ summary: 'La IA analiza las ventas de un producto y propone su configuración de precios (sin guardar)' })
+  @Auth()
+  proponerConfigPreciosIA(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ProponerConfigPreciosIaDto) {
+    return this.configPreciosIa.proponer({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('aplicarConfigPreciosIA')
+  @ApiOperation({ summary: 'Guarda la configuración de precios propuesta por la IA y revisada por el usuario' })
+  @Auth()
+  aplicarConfigPreciosIA(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: AplicarConfigPreciosIaDto) {
+    return this.configPreciosIa.aplicar({ ...headersParams, ...dtoIn });
   }
 
   @Get('getConfigPreciosProducto')

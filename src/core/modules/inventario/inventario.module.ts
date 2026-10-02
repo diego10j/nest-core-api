@@ -32,6 +32,7 @@ import { MenudeoController } from './menudeo/menudeo.controller';
 import { MenudeoService } from './menudeo/menudeo.service';
 import { ControlStockController } from './control-stock/control-stock.controller';
 import { ControlStockService } from './control-stock/control-stock.service';
+import { ConfigPreciosIaService } from './productos/config-precios-ia.service';
 import { ConfigPreciosProductosService } from './productos/config-precios.service';
 import { ProductosConsultaIaController } from './productos/productos-consulta-ia.controller';
 import { ProductosConsultaIaService } from './productos/productos-consulta-ia.service';
@@ -49,6 +50,7 @@ import { ProductosService } from './productos/productos.service';
     ComprobantesInvService,
     CoreService,
     ConfigPreciosProductosService,
+    ConfigPreciosIaService,
     InventarioBiService,
     InventarioProductoBiService,
     MenudeoService,

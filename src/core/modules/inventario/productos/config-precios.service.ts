@@ -63,13 +63,15 @@ export class ConfigPreciosProductosService extends BaseService {
 
   async generarConfigPreciosVenta(dtoIn: GeneraConfigPreciosVentaDto & HeaderParamsDto) {
     const query = new SelectQuery(`
-        SELECT f_generar_config_precios($1, $2, $3, $4)`);
+        SELECT f_generar_config_precios($1, $2, $3, $4, $5) AS total`);
     query.addParam(1, dtoIn.ideEmpr);
     query.addParam(2, dtoIn.ide_inarti);
     query.addParam(3, dtoIn.fechaInicio);
     query.addParam(4, dtoIn.fechaFin);
-    await this.dataSource.createSelectQuery(query);
-    return { message: 'ok' };
+    query.addParam(5, dtoIn.login);
+    const rows = (await this.dataSource.createSelectQuery(query)) as { total: number }[];
+    // Cantidad de configuraciones creadas (rangos continuos por forma de pago).
+    return { message: 'ok', total: Number(rows?.[0]?.total ?? 0) };
   }
 
   async getConfigPreciosProducto(dtoIn: GetConfigPrecioProductoDto & HeaderParamsDto) {

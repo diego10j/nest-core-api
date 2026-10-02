@@ -1964,20 +1964,30 @@ export class BotService implements OnModuleInit {
     }
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config, saludo);
-      // Las categorías adicionales (si el mensaje combinaba varias) van SIN saludo — ya
-      // se usó en el mensaje de arriba.
-      await this.responderInfoAdicional(ideEmpr, waId, tipoConsulta, textoInicial, nombreEmpresa, config);
-
       // El mensaje puede combinar la pregunta informativa con una consulta de producto en
       // el mismo texto (ej. "dónde están ubicados y disponen percarbonato de sodio") —
       // clasificarConsulta solo devuelve UNA categoría, así que sin este chequeo la mitad
       // del mensaje (el producto) se perdía en silencio (caso real detectado 2026-09-13).
       const { items: itemsExtra } = await this.botGpt.analizarLoteProductos(textoInicial, []);
-      if (itemsExtra.some(esProductoConcreto)) {
-        // Sin saludo: el mensaje de responderInfo de arriba ya lo llevó.
+      const hayProductoConcreto = itemsExtra.some(esProductoConcreto);
+
+      // Si además de pedir el catálogo EN GENERAL nombra productos concretos ("o si tiene
+      // algún catálogo" + "parafina, glicerina, esencias y moldes"), no se manda el catálogo
+      // genérico — manejarConsultaProductoClasica ya responde con los links específicos de
+      // esos productos, y mandar los dos es un catálogo duplicado para el mismo pedido (caso
+      // real detectado 2026-10-09).
+      const omitirGenerico = tipoConsulta === 'CATALOGO' && hayProductoConcreto;
+      if (!omitirGenerico) {
+        await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config, saludo);
+        // Las categorías adicionales (si el mensaje combinaba varias) van SIN saludo — ya
+        // se usó en el mensaje de arriba.
+        await this.responderInfoAdicional(ideEmpr, waId, tipoConsulta, textoInicial, nombreEmpresa, config);
+      }
+
+      if (hayProductoConcreto) {
         await this.manejarConsultaProductoClasica(
           waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
+          omitirGenerico ? saludo : undefined,
         );
         return;
       }
@@ -2385,15 +2395,23 @@ export class BotService implements OnModuleInit {
     this.logger.debug(`[Bot] tipoConsulta="${tipoConsulta}"`);
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
-      await this.responderInfoAdicional(ideEmpr, waId, tipoConsulta, texto, nombreEmpresa, config);
-
       // El mensaje puede combinar la pregunta informativa con una consulta de producto
       // en el mismo texto (ej. "dónde están ubicados y disponen percarbonato de
       // sodio") — clasificarConsulta solo devuelve UNA categoría, así que sin este
       // chequeo la mitad del mensaje (el producto) se perdía en silencio.
       const { items: itemsExtra } = await this.botGpt.analizarLoteProductos(texto, []);
-      if (itemsExtra.some(esProductoConcreto)) {
+      const hayProductoConcreto = itemsExtra.some(esProductoConcreto);
+
+      // Mismo criterio que responderConsultaInicial: pedir el catálogo general + nombrar
+      // productos concretos no debe mandar el catálogo genérico Y DESPUÉS otro con los
+      // links específicos — es un catálogo duplicado (caso real detectado 2026-10-09).
+      const omitirGenerico = tipoConsulta === 'CATALOGO' && hayProductoConcreto;
+      if (!omitirGenerico) {
+        await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+        await this.responderInfoAdicional(ideEmpr, waId, tipoConsulta, texto, nombreEmpresa, config);
+      }
+
+      if (hayProductoConcreto) {
         await this.manejarConsultaProductoClasica(
           waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto, nombreEmpresa, config,
         );
