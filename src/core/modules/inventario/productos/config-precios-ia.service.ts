@@ -13,7 +13,7 @@ import { AplicarConfigPreciosIaDto, ProponerConfigPreciosIaDto } from './dto/con
 /** RUC entre los que se hizo el traspaso por cambio de razón social: no son ventas reales. */
 const RUC_EXCLUIDOS = ['1719020883001', '1793234926001'];
 const MAX_CONFIGURACIONES = 15;
-const MAX_POR_TIPO = 6;
+const MAX_POR_TIPO = 8;
 const PREFIJO_OBSERVACION = 'Config IA';
 
 type Linea = {
@@ -120,9 +120,16 @@ verás: número de ventas, precio unitario sin IVA (mediana, mínimo y máximo),
 sobre el costo (ponderado, mínimo y máximo). Todos los números ya están calculados correctamente: NO los recalcules.
 
 Tu trabajo es detectar CÓMO se fijó realmente el precio y proponer la configuración de precios MÁS SIMPLE que lo reproduzca:
-1. Escalones por cantidad: busca las cantidades donde el nivel de precio o de margen cambia de forma sostenida (varias ventas
-   seguidas), no por una venta aislada. Ignora ventas atípicas (descuentos puntuales, errores, clientes especiales). Prefiere
-   pocos rangos claros; no abras un rango por cada cantidad ni por diferencias pequeñas.
+1. Escalones por cantidad. Un distribuidor maneja una lista de precios por volumen con escalones comerciales (los escalones dependen de cada producto: unos se venden desde 100 g, otros solo en sacos de 25 kg, otros
+   desde 500 g; NO supongas ninguno, deducelos únicamente de los datos y de la unidad del producto). El sistema ya detectó, por cada tipo de pago, las "cantidades_frecuentes"
+   (cantidades exactas que se repiten mucho: son los umbrales comerciales probables) y calculó las "bandas_candidatas" entre
+   esos umbrales, con su precio (mediana, p10, p90), margen, costo y "pct_precio_estable" (porcentaje de ventas de la banda
+   cuyo precio está dentro de ±1,5 % de la mediana). Tu tarea es elegir CUÁLES de esos umbrales son escalones reales:
+   - Un umbral es real si el precio o el margen de la banda que empieza ahí difiere de la banda anterior de forma sostenida
+     (más de ~3 % en precio o ~4 puntos en margen) con ventas suficientes. Conserva esos escalones aunque sean muchos.
+   - Fusiona bandas contiguas SOLO si su precio y margen son prácticamente iguales. No unas bandas distintas para "simplificar".
+   - "desde" de cada rango (salvo el primero, que es 0) DEBE ser exactamente uno de los valores de "cantidades_frecuentes".
+   - Ignora ventas atípicas (descuentos puntuales, errores, clientes especiales).
 2. La configuración SIEMPRE es un porcentaje de utilidad sobre el costo (el costo promedio varía con el tiempo, por lo que
    un precio fijo quedaría desfasado). Para cada rango indica el "patron" que explica ese porcentaje:
    - "margen": el margen es estable dentro del rango (lo normal). El porcentaje será el margen histórico del rango.
@@ -136,7 +143,7 @@ Tu trabajo es detectar CÓMO se fijó realmente el precio y proponer la configur
    Si dos tipos de pago siguen el mismo patrón igualmente genera las configuraciones de cada tipo.
 4. Reglas obligatorias: por cada tipo, los rangos son consecutivos, el primero empieza en 0 y el último termina en null
    (sin límite). "desde" de cada rango posterior debe ser una cantidad que exista en los datos. "hasta" de un rango puede
-   ponerse en null salvo que sea el último; el sistema lo ajusta. Máximo 6 rangos por tipo y 15 en total.
+   ponerse en null salvo que sea el último; el sistema lo ajusta. Máximo 8 rangos por tipo y 15 en total.
 5. En "razon" explica en una frase corta y concreta qué patrón viste (ej. "Precio estable en $4,50 hasta 20 L; desde 20 L baja
    a $4,20"). En "resumen" resume el hallazgo general en 2-3 frases. En "advertencias" lista cosas que el usuario debe revisar
    (pocos datos, costos que cambiaron mucho, márgenes negativos o cercanos a cero, patrones contradictorios). Escribe en español.`;
@@ -233,11 +240,62 @@ export class ConfigPreciosIaService {
         medios[l.medio] = (medios[l.medio] ?? 0) + 1;
       });
 
+      const minHits = Math.max(3, Math.ceil(validas.length * 0.015));
+      const umbrales = [...porCantidad.entries()]
+        .filter(([, ls]) => ls.length >= minHits)
+        .sort((x, y) => y[1].length - x[1].length)
+        .slice(0, 25)
+        .map(([cantidad]) => cantidad)
+        .sort((x, y) => x - y);
+      // Si casi no hay cantidades repetidas, los umbrales salen de la distribución real de lo vendido (cuantiles).
+      if (umbrales.length < 3 && porCantidad.size >= 4) {
+        const cantidades = [...porCantidad.keys()].sort((x, y) => x - y);
+        [0.2, 0.4, 0.6, 0.8].forEach((p) => {
+          const q = cantidades[Math.min(cantidades.length - 1, Math.round((cantidades.length - 1) * p))];
+          if (q > 0 && !umbrales.includes(q)) umbrales.push(q);
+        });
+        umbrales.sort((x, y) => x - y);
+      }
+      const limites = [0, ...umbrales.filter((q) => q > 0)];
+      const bandas = limites
+        .map((desde, i) => {
+          const hasta = limites[i + 1];
+          const ls = validas.filter((l) => l.cantidad >= desde && (hasta === undefined || l.cantidad < hasta));
+          if (ls.length === 0) return null;
+          const med = mediana(ls.map((l) => l.precio));
+          return {
+            desde,
+            hasta: hasta ?? null,
+            ventas: ls.length,
+            precio_mediana: r4(med),
+            precio_p10: r4(
+              percentil(
+                ls.map((l) => l.precio),
+                0.1,
+              ),
+            ),
+            precio_p90: r4(
+              percentil(
+                ls.map((l) => l.precio),
+                0.9,
+              ),
+            ),
+            costo_promedio: r4(ls.reduce((acc, l) => acc + l.costo, 0) / ls.length),
+            margen_pct: r2(margenPonderado(ls)),
+            pct_precio_estable: Math.round(
+              (ls.filter((l) => Math.abs(l.precio - med) / med <= 0.015).length / ls.length) * 100,
+            ),
+          };
+        })
+        .filter((b) => b !== null);
+
       return {
         ide_cncfp: grupo[0].tipo,
         tipo_de_pago: grupo[0].nombreTipo,
         lineas_totales: grupo.length,
         lineas_validas: validas.length,
+        cantidades_frecuentes: umbrales,
+        bandas_candidatas: bandas,
         medios_de_pago: medios,
         niveles: [...porCantidad.entries()]
           .sort((a, b) => a[0] - b[0])
@@ -257,8 +315,19 @@ export class ConfigPreciosIaService {
     });
   }
 
+  /** El corte de un rango debe ser un umbral comercial real (cantidad frecuente): se ajusta al más cercano. */
+  private ajustarAUmbral(desde: number, umbrales?: number[]): number {
+    if (!umbrales || umbrales.length === 0 || desde === 0) return desde;
+    return umbrales.reduce((mejor, q) => (Math.abs(q - desde) < Math.abs(mejor - desde) ? q : mejor), umbrales[0]);
+  }
+
   /** Ajusta lo que propone el modelo a rangos válidos y continuos por tipo, sin confiar en sus números. */
-  private normalizar(tiers: TierIa[], tiposDisponibles: Set<number | null>, paso: number): TierIa[] {
+  private normalizar(
+    tiers: TierIa[],
+    tiposDisponibles: Set<number | null>,
+    paso: number,
+    umbrales: Map<number | null, number[]>,
+  ): TierIa[] {
     const porTipo = new Map<number | null, TierIa[]>();
     tiers
       .filter((t) => tiposDisponibles.has(t.ide_cncfp))
@@ -267,7 +336,10 @@ export class ConfigPreciosIaService {
     const salida: TierIa[] = [];
     porTipo.forEach((lista) => {
       const ordenados = [...lista]
-        .map((t) => ({ ...t, desde: Math.max(0, Number(t.desde) || 0) }))
+        .map((t) => ({
+          ...t,
+          desde: this.ajustarAUmbral(Math.max(0, Number(t.desde) || 0), umbrales.get(t.ide_cncfp)),
+        }))
         .sort((a, b) => a.desde - b.desde)
         // dos rangos que empiezan en la misma cantidad son uno solo: se conserva el primero
         .filter((t, i, arr) => i === 0 || t.desde > arr[i - 1].desde)
@@ -324,6 +396,9 @@ export class ConfigPreciosIaService {
       resumen.filter((t) => t.lineas_validas >= 4).map((t) => t.ide_cncfp),
     );
     tiposDisponibles.add(null);
+    const umbrales = new Map<number | null, number[]>(
+      resumen.map((t) => [t.ide_cncfp, t.cantidades_frecuentes] as [number | null, number[]]),
+    );
 
     const datos = {
       producto: prod.nombre_inarti,
@@ -352,7 +427,7 @@ export class ConfigPreciosIaService {
     }
 
     // ── El modelo decide los cortes y el modo; los valores se calculan aquí con los datos reales ──
-    let tiers = this.normalizar(respuesta.configuraciones ?? [], tiposDisponibles, paso);
+    let tiers = this.normalizar(respuesta.configuraciones ?? [], tiposDisponibles, paso, umbrales);
 
     const tiposConConfig = new Set(tiers.map((t) => t.ide_cncfp).filter((t) => t !== null));
     const lineasDe = (tipo: number | null) =>
@@ -369,7 +444,8 @@ export class ConfigPreciosIaService {
       const med = mediana(precios);
       const constantes = ls.filter((l) => Math.abs(l.precio - med) / med <= 0.015).length;
       // Un precio constante solo se acepta si de verdad se repite (≥3 ventas y ≥70 % del rango); si no, es margen.
-      const esConstante = t.patron === 'precio_constante' && constantes >= 3 && constantes / ls.length >= 0.7 && costoActual > 0;
+      const esConstante =
+        t.patron === 'precio_constante' && constantes >= 3 && constantes / ls.length >= 0.7 && costoActual > 0;
       const valor = esConstante ? r2(((med - costoActual) / costoActual) * 100) : r2(margen);
       const coherentes = esConstante ? constantes : ls.filter((l) => Math.abs(margenLinea(l) - margen) <= 5).length;
       const margenes = ls.map(margenLinea);
@@ -403,6 +479,7 @@ export class ConfigPreciosIaService {
         tiers.filter((t) => !(t.ide_cncfp === menor.ide_cncfp && t.desde === menor.rango1)),
         tiposDisponibles,
         paso,
+        umbrales,
       );
       propuestas = tiers.map(calcular).filter((p): p is ConfigPrecioPropuesta => p !== null);
     }
@@ -450,9 +527,7 @@ export class ConfigPreciosIaService {
       lineasDescartadas: lineas.length - validas.length,
       resumen: respuesta.resumen,
       advertencias,
-      configuraciones: propuestas.sort(
-        (a, b) => (a.ide_cncfp ?? 99) - (b.ide_cncfp ?? 99) || a.rango1 - b.rango1,
-      ),
+      configuraciones: propuestas.sort((a, b) => (a.ide_cncfp ?? 99) - (b.ide_cncfp ?? 99) || a.rango1 - b.rango1),
     };
   }
 
