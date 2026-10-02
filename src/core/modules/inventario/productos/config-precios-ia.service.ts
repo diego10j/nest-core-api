@@ -30,7 +30,8 @@ type TierIa = {
   ide_cncfp: number | null;
   desde: number;
   hasta: number | null;
-  modo: 'utilidad' | 'fijo';
+  /** margen: la utilidad sobre el costo es la constante; precio_constante: varias ventas al mismo precio. */
+  patron: 'margen' | 'precio_constante';
   razon: string;
 };
 
@@ -46,11 +47,16 @@ export type ConfigPrecioPropuesta = {
   rango1: number;
   rango2: number | null;
   rango_infinito: boolean;
-  modo: 'utilidad' | 'fijo';
-  /** % de utilidad (modo utilidad) o precio sin IVA (modo fijo): calculado con los datos, no por el modelo. */
+  /** La configuración siempre es un % de utilidad sobre el costo (el costo promedio varía; un precio fijo quedaría desfasado). */
+  modo: 'utilidad';
+  /** % de utilidad: calculado con los datos, no por el modelo. */
   valor: number;
+  /** Cómo se obtuvo el %: margen histórico, o el % que reproduce un precio constante con el costo actual. */
+  base: 'margen' | 'precio_constante';
+  /** Solo si base = precio_constante: el precio sin IVA que se repite en las ventas. */
+  precio_referencia: number | null;
   ventas: number;
-  /** % de las ventas del rango que coinciden con el valor propuesto (±3 % en precio o ±5 puntos en margen). */
+  /** % de las ventas del rango que coinciden con el patrón propuesto (±1,5 % en precio o ±5 puntos en margen). */
   coherencia: number;
   margen_min: number;
   margen_max: number;
@@ -95,12 +101,12 @@ const ESQUEMA_RESPUESTA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['ide_cncfp', 'desde', 'hasta', 'modo', 'razon'],
+        required: ['ide_cncfp', 'desde', 'hasta', 'patron', 'razon'],
         properties: {
           ide_cncfp: { type: ['integer', 'null'] },
           desde: { type: 'number' },
           hasta: { type: ['number', 'null'] },
-          modo: { type: 'string', enum: ['utilidad', 'fijo'] },
+          patron: { type: 'string', enum: ['margen', 'precio_constante'] },
           razon: { type: 'string' },
         },
       },
@@ -117,11 +123,13 @@ Tu trabajo es detectar CÓMO se fijó realmente el precio y proponer la configur
 1. Escalones por cantidad: busca las cantidades donde el nivel de precio o de margen cambia de forma sostenida (varias ventas
    seguidas), no por una venta aislada. Ignora ventas atípicas (descuentos puntuales, errores, clientes especiales). Prefiere
    pocos rangos claros; no abras un rango por cada cantidad ni por diferencias pequeñas.
-2. Modo de cada rango:
-   - "fijo": el PRECIO unitario es prácticamente constante dentro del rango (variación menor a ~3 %) aunque el margen cambie
-     porque cambió el costo. Es una lista de precios.
-   - "utilidad": el MARGEN es estable y el precio se mueve junto con el costo. Es una política de utilidad sobre el costo.
-   Si ambos son estables elige "fijo" cuando el costo cambió poco, y "utilidad" cuando el costo cambió bastante.
+2. La configuración SIEMPRE es un porcentaje de utilidad sobre el costo (el costo promedio varía con el tiempo, por lo que
+   un precio fijo quedaría desfasado). Para cada rango indica el "patron" que explica ese porcentaje:
+   - "margen": el margen es estable dentro del rango (lo normal). El porcentaje será el margen histórico del rango.
+   - "precio_constante": SOLO si en el rango varias ventas (mínimo 3) se hicieron siempre exactamente al mismo precio
+     unitario (variación menor a ~1,5 %) aunque el margen cambiara porque cambió el costo. El sistema calculará el
+     porcentaje que reproduce ese precio con el costo actual. No lo uses si el precio varía.
+   Ante la duda usa "margen".
 3. Tipos de pago: configura cada tipo (por ejemplo Contado, Crédito) que tenga ventas suficientes (4 o más líneas válidas).
    Un tipo con muy pocas ventas no merece configuración propia: no lo incluyas (su ide_cncfp no debe aparecer). Solo usa
    ide_cncfp = null (configuración genérica para cualquier tipo de pago) si aporta algo para tipos sin ventas suficientes.
@@ -276,6 +284,16 @@ export class ConfigPreciosIaService {
     return salida;
   }
 
+  /** Costo promedio (PPM) vigente hoy: el que usa el motor de precios para aplicar el porcentaje. */
+  private async costoActual(ideInarti: number, ideEmpr: number, ideSucu: number): Promise<number> {
+    const q = new SelectQuery(
+      `SELECT costo_unitario::float8 AS costo FROM f_costo_unitario_ppmp(${ideEmpr}, ${ideSucu}, $1, CURRENT_DATE)`,
+    );
+    q.addParam(1, ideInarti);
+    const fila = ((await this.dataSource.createSelectQuery(q)) as any[])[0];
+    return Number(fila?.costo) || 0;
+  }
+
   async proponer(dtoIn: ProponerConfigPreciosIaDto & HeaderParamsDto) {
     if (dtoIn.fechaInicio > dtoIn.fechaFin) {
       throw new BadRequestException('La fecha inicial no puede ser mayor que la final');
@@ -317,6 +335,8 @@ export class ConfigPreciosIaService {
       tipos_de_pago: resumen,
     };
 
+    const costoActual = await this.costoActual(dtoIn.ide_inarti, Number(dtoIn.ideEmpr), Number(dtoIn.ideSucu));
+
     let respuesta: RespuestaIa;
     try {
       respuesta = await this.gpt.jsonEstructurado<RespuestaIa>({
@@ -347,10 +367,11 @@ export class ConfigPreciosIaService {
       const margen = margenPonderado(ls);
       const precios = ls.map((l) => l.precio);
       const med = mediana(precios);
-      const valor = t.modo === 'fijo' ? r4(med) : r2(margen);
-      const coherentes = ls.filter((l) =>
-        t.modo === 'fijo' ? Math.abs(l.precio - med) / med <= 0.03 : Math.abs(margenLinea(l) - margen) <= 5,
-      ).length;
+      const constantes = ls.filter((l) => Math.abs(l.precio - med) / med <= 0.015).length;
+      // Un precio constante solo se acepta si de verdad se repite (≥3 ventas y ≥70 % del rango); si no, es margen.
+      const esConstante = t.patron === 'precio_constante' && constantes >= 3 && constantes / ls.length >= 0.7 && costoActual > 0;
+      const valor = esConstante ? r2(((med - costoActual) / costoActual) * 100) : r2(margen);
+      const coherentes = esConstante ? constantes : ls.filter((l) => Math.abs(margenLinea(l) - margen) <= 5).length;
       const margenes = ls.map(margenLinea);
 
       return {
@@ -359,8 +380,10 @@ export class ConfigPreciosIaService {
         rango1: t.desde,
         rango2: t.hasta,
         rango_infinito: t.hasta === null,
-        modo: t.modo,
+        modo: 'utilidad',
         valor,
+        base: esConstante ? 'precio_constante' : 'margen',
+        precio_referencia: esConstante ? r4(med) : null,
         ventas: ls.length,
         coherencia: Math.round((coherentes / ls.length) * 100),
         margen_min: r2(percentil(margenes, 0.1)),
@@ -411,7 +434,7 @@ export class ConfigPreciosIaService {
       );
     }
     propuestas
-      .filter((p) => p.modo === 'utilidad' && p.valor < 5)
+      .filter((p) => p.valor < 5)
       .forEach((p) =>
         advertencias.push(
           `${p.nombre_cncfp} ${p.rango1}+: la utilidad propuesta es muy baja (${p.valor} %). Verifica que no sean ventas al costo.`,
@@ -422,6 +445,7 @@ export class ConfigPreciosIaService {
       producto: prod.nombre_inarti,
       unidad: prod.siglas_inuni,
       periodo: { fechaInicio: dtoIn.fechaInicio, fechaFin: dtoIn.fechaFin },
+      costoActual: r4(costoActual),
       lineasAnalizadas: validas.length,
       lineasDescartadas: lineas.length - validas.length,
       resumen: respuesta.resumen,
