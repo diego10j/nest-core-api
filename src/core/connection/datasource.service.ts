@@ -50,6 +50,9 @@ export class DataSourceService {
     // query nueva queda esperando en silencio, indefinidamente, sin error visible.
     max: 20,
     connectionTimeoutMillis: 15000,
+    // Opcional (DB_STATEMENT_TIMEOUT_MS > 0): corta en el servidor las consultas que excedan el tope,
+    // para que un listado pesado no ocupe una conexión del pool indefinidamente. 0 = sin tope.
+    ...(envs.dbStatementTimeoutMs > 0 ? { statement_timeout: envs.dbStatementTimeoutMs } : {}),
   });
   private TYPE_DATESTAMP = 1082;
   private TYPE_TIMESTAMP = 1114;
@@ -149,6 +152,8 @@ export class DataSourceService {
       let hasFilters = false;
       let windowCountInjected = false;
       let filteredQueryBeforePagination: string | undefined;
+      // COUNT sin filtros en curso (se ejecuta en paralelo con la query de datos, ver más abajo)
+      let totalRecordsPromise: Promise<number> | undefined;
       // Handle SelectQuery specific logic
       if (query instanceof SelectQuery) {
         const selectQuery = query as SelectQuery;
@@ -181,8 +186,16 @@ export class DataSourceService {
         // Calculate total records
         if (selectQuery.isLazy) {
           // Total sin filtros (totalRecords) - requiere su propio WHERE (o ausencia de él),
-          // no se puede fusionar con la query de datos filtrada.
-          totalRecords = await this.calculateTotalRecordsWithoutFilters(selectQuery, businessParamValues);
+          // no se puede fusionar con la query de datos filtrada. Se lanza ya, pero solo se espera
+          // aquí cuando hace falta para armar la paginación (lastPage); en el caso normal corre en
+          // paralelo con la query de datos y se espera junto a ella (ver Promise.all más abajo).
+          totalRecordsPromise = this.calculateTotalRecordsWithoutFilters(selectQuery, businessParamValues);
+          // Si la query de datos falla antes de esperar este COUNT, evita un unhandledRejection;
+          // el error real se propaga igualmente desde el await/Promise.all.
+          totalRecordsPromise.catch(() => undefined);
+          if (selectQuery.lastPage) {
+            totalRecords = await totalRecordsPromise;
+          }
 
           // Fusiona el total filtrado vía COUNT(1) OVER() en vez de una query COUNT aparte -
           // ahorra un round-trip en el caso más común. No se fusiona si además hay que resolver
@@ -204,17 +217,29 @@ export class DataSourceService {
           finalQuery = this.applyPagination(selectQuery, finalQuery, totalRecords);
         }
 
-        // Set pagination metadata
-        if (selectQuery.isLazy && selectQuery.pagination && totalRecords !== undefined) {
-          this.setPaginationMetadata(selectQuery, totalRecords);
-        }
       }
 
-      // Execute the final query
-      const res = await this.pool.query(
-        finalQuery,
-        query.params.map((_param) => _param.value),
-      );
+      // Execute the final query (en paralelo con el COUNT sin filtros cuando aún está pendiente)
+      const [res, totalSinFiltros] = await Promise.all([
+        this.pool.query(
+          finalQuery,
+          query.params.map((_param) => _param.value),
+        ),
+        totalRecords === undefined ? totalRecordsPromise : Promise.resolve(totalRecords),
+      ]);
+      if (totalSinFiltros !== undefined) {
+        totalRecords = totalSinFiltros;
+      }
+
+      // Set pagination metadata
+      if (
+        query instanceof SelectQuery &&
+        query.isLazy &&
+        query.pagination &&
+        totalRecords !== undefined
+      ) {
+        this.setPaginationMetadata(query, totalRecords);
+      }
 
       // Set total records for non-lazy select queries
       if (query instanceof SelectQuery && !query.isLazy) {
@@ -549,8 +574,9 @@ export class DataSourceService {
 
   private setPaginationMetadata(selectQuery: SelectQuery, totalRecords: number): void {
     const totalPages = Math.ceil(totalRecords / selectQuery.pagination.pageSize);
-    selectQuery.setIsPreviousPage(selectQuery.pagination.pageIndex > 1);
-    selectQuery.setIsNextPage(selectQuery.pagination.pageIndex < totalPages);
+    // pageIndex es base 0: hay anterior si no es la primera, hay siguiente si no es la última
+    selectQuery.setIsPreviousPage(selectQuery.pagination.pageIndex > 0);
+    selectQuery.setIsNextPage(selectQuery.pagination.pageIndex + 1 < totalPages);
     selectQuery.setTotalPages(totalPages);
   }
 

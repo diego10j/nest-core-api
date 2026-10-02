@@ -38,6 +38,9 @@ interface EnvVars {
   YCLOUD_API_URL?: string;
 
   AUTH_GUARD_MODE: 'enforce' | 'warn';
+
+  /** Tope en ms por consulta SQL (statement_timeout). 0 = sin tope (comportamiento histórico). */
+  DB_STATEMENT_TIMEOUT_MS: number;
 }
 
 // Valor por defecto público (repo abierto): en producción debe definirse JWT_REFRESH_SECRET propio
@@ -109,6 +112,8 @@ const envsSchema = z
 
     // 'warn' = solo loguea lo que el guard JWT global rechazaría (rollout); 'enforce' = rechaza.
     AUTH_GUARD_MODE: z.enum(['enforce', 'warn']).optional().default('enforce'),
+
+    DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).optional().default(0),
   })
   .passthrough();
 
@@ -127,6 +132,7 @@ export const envs = {
   // dbPort: envVars.DB_PORT,
   // dbUsername: envVars.DB_USERNAME,
   bdUrlPool: envVars.DB_URL_POOL,
+  dbStatementTimeoutMs: envVars.DB_STATEMENT_TIMEOUT_MS,
 
   idSistema: envVars.ID_SISTEMA,
   mode: envVars.MODE,
