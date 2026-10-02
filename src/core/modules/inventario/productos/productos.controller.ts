@@ -10,7 +10,10 @@ import { Auth } from 'src/core/auth';
 import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
 
 import { ConfigPreciosIaService } from './config-precios-ia.service';
+import { ConfigPreciosReporteService } from './config-precios-reporte.service';
 import { ConfigPreciosProductosService } from './config-precios.service';
+import { CambiarEstadoConfigPreciosDto } from './dto/cambiar-estado-config-precios.dto';
+import { HistorialConfigPreciosDto, ResumenHistorialConfigPreciosDto } from './dto/historial-config-precios.dto';
 import { AplicarConfigPreciosIaDto, ProponerConfigPreciosIaDto } from './dto/config-precios-ia.dto';
 import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
@@ -41,7 +44,8 @@ export class ProductosController {
     private readonly productos: ProductosService,
     private readonly configPrecios: ConfigPreciosProductosService,
     private readonly configPreciosIa: ConfigPreciosIaService,
-  ) { }
+    private readonly configPreciosReporte: ConfigPreciosReporteService,
+  ) {}
 
   @Get('getProductoByUuid')
   @ApiOperation({ summary: 'Obtener producto por UUID' })
@@ -346,7 +350,9 @@ export class ProductosController {
   }
 
   @Post('proponerConfigPreciosIA')
-  @ApiOperation({ summary: 'La IA analiza las ventas de un producto y propone su configuración de precios (sin guardar)' })
+  @ApiOperation({
+    summary: 'La IA analiza las ventas de un producto y propone su configuración de precios (sin guardar)',
+  })
   @Auth()
   proponerConfigPreciosIA(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ProponerConfigPreciosIaDto) {
     return this.configPreciosIa.proponer({ ...headersParams, ...dtoIn });
@@ -406,6 +412,47 @@ export class ProductosController {
     });
   }
 
+  @Get('getReporteConfigPrecios')
+  @ApiOperation({ summary: 'Reporte de todas las configuraciones de precios con utilidad equivalente' })
+  @Auth()
+  getReporteConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.configPreciosReporte.getReporteConfigPrecios(headersParams);
+  }
+
+  @Post('cambiarEstadoConfigPrecios')
+  @ApiOperation({ summary: 'Activar/desactivar o autorizar varias configuraciones de precios' })
+  @Auth()
+  cambiarEstadoConfigPrecios(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: CambiarEstadoConfigPreciosDto,
+  ) {
+    return this.configPreciosReporte.cambiarEstado({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getHistorialConfigPrecios')
+  @ApiOperation({ summary: 'Historial de cambios de las configuraciones de precios' })
+  @Auth()
+  getHistorialConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: HistorialConfigPreciosDto) {
+    return this.configPreciosReporte.getHistorial({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getResumenHistorialConfigPrecios')
+  @ApiOperation({ summary: 'Tendencia de utilidad y costo según el historial de configuraciones' })
+  @Auth()
+  getResumenHistorialConfigPrecios(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ResumenHistorialConfigPreciosDto,
+  ) {
+    return this.configPreciosReporte.getResumenHistorial({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('tomarSnapshotConfigPrecios')
+  @ApiOperation({ summary: 'Guarda una foto de las configuraciones vigentes con el costo de hoy' })
+  @Auth()
+  tomarSnapshotConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.configPreciosReporte.tomarSnapshot(headersParams);
+  }
+
   @Get('getAllProductosConfigPrecios')
   @ApiOperation({ summary: 'Listar todos los productos con su configuración de precios' })
   @Auth()
@@ -445,6 +492,4 @@ export class ProductosController {
       ...dtoIn,
     });
   }
-
-
 }

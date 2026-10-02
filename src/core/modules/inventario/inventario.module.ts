@@ -33,6 +33,7 @@ import { MenudeoService } from './menudeo/menudeo.service';
 import { ControlStockController } from './control-stock/control-stock.controller';
 import { ControlStockService } from './control-stock/control-stock.service';
 import { ConfigPreciosIaService } from './productos/config-precios-ia.service';
+import { ConfigPreciosReporteService } from './productos/config-precios-reporte.service';
 import { ConfigPreciosProductosService } from './productos/config-precios.service';
 import { ProductosConsultaIaController } from './productos/productos-consulta-ia.controller';
 import { ProductosConsultaIaService } from './productos/productos-consulta-ia.service';
@@ -41,7 +42,20 @@ import { ProductosService } from './productos/productos.service';
 
 @Module({
   imports: [ConfigModule, IntegrationModule],
-  controllers: [ProductosController, ProductosConsultaIaController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController, CategoriasController, ControlStockController, InventarioDashboardController],
+  controllers: [
+    ProductosController,
+    ProductosConsultaIaController,
+    BodegasController,
+    ComprobantesInvController,
+    InventarioBiController,
+    MenudeoController,
+    EtiquetasController,
+    CatalogosController,
+    HtmlProductController,
+    CategoriasController,
+    ControlStockController,
+    InventarioDashboardController,
+  ],
   providers: [
     ProductosService,
     ProductosConsultaIaService,
@@ -51,6 +65,7 @@ import { ProductosService } from './productos/productos.service';
     CoreService,
     ConfigPreciosProductosService,
     ConfigPreciosIaService,
+    ConfigPreciosReporteService,
     InventarioBiService,
     InventarioProductoBiService,
     MenudeoService,
@@ -68,4 +83,4 @@ import { ProductosService } from './productos/productos.service';
     InventarioDashboardService,
   ],
 })
-export class InventarioModule { }
+export class InventarioModule {}
