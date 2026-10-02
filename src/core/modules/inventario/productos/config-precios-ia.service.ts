@@ -757,6 +757,39 @@ export class ConfigPreciosIaService {
       propuestas = calcularTodos();
     }
 
+    // Dos rangos contiguos con el mismo resultado (misma utilidad ±1,5 puntos, o mismo precio fijo ±1 %) no son
+    // escalones distintos: se unen en uno solo y se recalcula con las ventas de ambos.
+    for (;;) {
+      const cadenasUnir = new Map<number | null, ConfigPrecioPropuesta[]>();
+      propuestas
+        .filter((p) => !p.exacta)
+        .forEach((p) => cadenasUnir.set(p.ide_cncfp, [...(cadenasUnir.get(p.ide_cncfp) ?? []), p]));
+      let sobrante: ConfigPrecioPropuesta | null = null;
+      for (const lista of cadenasUnir.values()) {
+        lista.sort((x, y) => x.rango1 - y.rango1);
+        for (let k = 1; k < lista.length && !sobrante; k++) {
+          const a = lista[k - 1];
+          const b = lista[k];
+          const iguales =
+            a.modo === b.modo &&
+            (a.modo === 'fijo'
+              ? Math.abs(a.valor - b.valor) / b.valor <= 0.01
+              : Math.abs(a.utilidad_pct - b.utilidad_pct) <= 1.5);
+          if (iguales) sobrante = b;
+        }
+        if (sobrante) break;
+      }
+      if (!sobrante) break;
+      const quitar: ConfigPrecioPropuesta = sobrante;
+      tiers = this.normalizar(
+        tiers.filter((t) => !(t.ide_cncfp === quitar.ide_cncfp && t.desde === quitar.rango1 && !t.exacta)),
+        tiposDisponibles,
+        paso,
+        umbrales,
+      );
+      propuestas = calcularTodos();
+    }
+
     // Tope total: se quita la configuración con menos ventas y se vuelve a ajustar la continuidad.
     while (propuestas.length > MAX_CONFIGURACIONES) {
       const menor = propuestas.reduce((a, b) => (b.ventas < a.ventas ? b : a));
