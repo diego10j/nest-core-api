@@ -589,14 +589,14 @@ export class ConfigPreciosIaService {
       const porCantidad = new Map<number, Linea[]>();
       lt.forEach((l) => porCantidad.set(l.cantidad, [...(porCantidad.get(l.cantidad) ?? []), l]));
       [...porCantidad.entries()]
-        .filter(([, ls]) => ls.length >= 3)
+        .filter(([, ls]) => ls.length >= 2)
         .sort((x, y) => x[0] - y[0])
         .slice(0, 4)
         .forEach(([cantidad, ls]) => {
           const med = mediana(ls.map((l) => l.precio));
           const estables = ls.filter((l) => Math.abs(l.precio - med) / med <= 0.015).length;
           const mayores = lt.filter((l) => l.cantidad > cantidad);
-          if (estables / ls.length < 0.7 || mayores.length < 3) return;
+          if (estables / ls.length < (ls.length === 2 ? 1 : 0.7) || mayores.length < 3) return;
           if (Math.abs(margenPonderado(ls) - margenPonderado(mayores)) <= 8) return;
           if (propuestasIa.some((t) => t.ide_cncfp === tipo && t.exacta && Math.abs(t.desde - cantidad) < paso / 2))
             return;
