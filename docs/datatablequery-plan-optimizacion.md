@@ -84,3 +84,46 @@ Hallazgos de la revisión con agente sobre el build real, y qué se hizo:
 | Reconexiones del socket de WhatsApp (`31.220.100.73:3003`) | Sin cambios: depende del servidor externo del bot (ping timeout); revisar allí. |
 
 Siguiente tramo del entry (por tamaño sin minificar): `@mui/x-date-pickers` (~500 KB, por `LocalizationProvider` en `app.tsx` y páginas), `motion-dom`/`framer-motion` (~400 KB, `components/animate`), `src/components/iconify` (~190 KB de iconos offline), `src/assets/illustrations` (~140 KB), `zod` y `react-hook-form`. Ver `ANALYZE=true yarn build`.
+
+## 8. Avance – Fase 1 backend (HECHA en la rama `claude/gracious-rubin-5kxiwm`)
+
+Prueba de regresión nueva: `test/datatable-query.integration-spec.ts` (13 casos contra una BD real: paginación, última página, `lastPage`, orden, filtros, búsqueda global, página fuera de rango, no lazy, parámetros de negocio + filtros). Se omite sin `TEST_DB_URL`.
+Ejecutar: `TEST_DB_URL=postgres://usuario:clave@host:5432/base yarn test:integration` (crea la tabla de ejemplo indicada en el encabezado del archivo; apuntar a una BD de pruebas, no a producción).
+Antes de cambiar nada, 10 de 13 pasaban y 3 fallaban por el bug B5 (confirmado).
+
+| Punto | Estado | Detalle / medición |
+|---|---|---|
+| B2 COUNT en paralelo | Hecho | El COUNT sin filtros ya no espera a la query de datos (salvo `lastPage`, que lo necesita para calcular la página). En una tabla sintética de 1,5 M de filas, 4 núcleos, BD local: media por petición ~190 ms → ~160–190 ms (−15 % a −30 %, según orden; con `ORDER BY` sin índice domina la query de datos y la ganancia es menor). **La ganancia real depende del coste del COUNT frente al de la query de datos: medir con `EXPLAIN (ANALYZE)` de las pantallas reales (Fase 0).** Usa 2 conexiones del pool a la vez por petición lazy (pool = 20). |
+| B3 compresión | Hecho | `compression` (umbral 1 KB) en `main.ts`: un JSON de 400 filas pasa de 17,3 KB a 3,1 KB (−82 %). Si hay nginx delante con gzip, no se recomprime (ya viene con `Content-Encoding`). |
+| B5 metadatos de paginación | Hecho | `hasPreviousPage = pageIndex > 0`, `hasNextPage = pageIndex + 1 < totalPages`. El front actual no usa estos campos, así que no cambia nada visible. |
+| B7 `statement_timeout` | Opcional | Variable `DB_STATEMENT_TIMEOUT_MS` (0 = desactivado, comportamiento actual). No se activa por defecto porque también cortaría reportes e importaciones largas. |
+| B1 caché del total sin filtros | **No hecho (decisión)** | Mostraría un total desactualizado hasta el TTL tras altas/bajas. Se reevalúa con la medición real de la Fase 0. |
+| B4 caché de esquema en memoria | Pendiente | Beneficio bajo; solo `schema:true` (primera carga). |
+| B8 índices `pg_trgm` | Pendiente | Requiere medir en las tablas reales (Fase 4). |
+
+Siguiente: Fase 2 (front, renders: F1–F5).
+
+## 9. Avance – Fase 2 front (rama `claude/front-dtq-renders`) y arnés de medición
+
+**Arnés de medición (nuevo, sin tocar el código de la app):** `scripts/perf/dtq-mock-server.js` (backend simulado con datos reales de la tabla de pruebas `dtq_item`) y `scripts/perf/dtq-medir-front.js` (Playwright: inicia sesión con un token falso, abre `/dashboard/ventas/facturacion/list`, pulsa "siguiente" 5 veces y mide ms hasta ver las filas nuevas y commits de React vía `__REACT_DEVTOOLS_GLOBAL_HOOK__`).
+Cómo repetirlo: crear `.env.local` en el front con `VITE_SERVER_URL=http://127.0.0.1:3999` (+ `VITE_FORMAT_*`), `node scripts/perf/dtq-mock-server.js`, `yarn build && yarn preview --port 18081` y `PORT=18081 node scripts/perf/dtq-medir-front.js`.
+Importante: medir contra el **build de producción** (`yarn preview`); en `yarn dev` React corre en modo desarrollo y los tiempos no son representativos.
+
+**Qué se cambió (front, 3 archivos):**
+| Punto | Cambio |
+|---|---|
+| F1/F2 | `data`, `totalRecords`, `totalFilterRecords`, `paginationResponse` y `lazy` se derivan de `dataResponse` en el mismo render (antes: 5 `useState` copiados en un efecto → un render extra de toda la tabla por respuesta). Se conserva la semántica anterior: una respuesta sin `rows` no borra lo mostrado, y las filas no se exponen hasta que el primer efecto cargó `columns`/`primaryKey` (filas y columnas aparecen juntas). |
+| Espera al paginar/ordenar | `updateParams` acepta un número de ms; paginar y ordenar usan 60 ms en vez de los 300 ms del debounce general (que se sentían como lentitud). Filtros y búsqueda conservan su comportamiento. |
+| F3, F4, F5 | **No se tocaron**: la medición mostró que no son el cuello de botella (una sola petición por interacción, 0 renders en reposo) y F4 cambia la UI de carga. |
+
+**Resultados (build de producción, 2 rondas, red local de ~10 ms):**
+| Métrica | Antes | Después |
+|---|---|---|
+| Clic en "siguiente" → filas nuevas visibles | ~500 ms | ~245 ms (**−50 %**) |
+| Commits de React por cambio de página (dev) | 10–14 | 9–12 (−1) |
+| Peticiones por interacción | 1 | 1 |
+| Commits en reposo (3 s sin interacción) | 0 | 0 |
+En el servidor real habrá además la latencia de red y de la consulta: el ahorro fijo de ~255 ms por interacción se mantiene.
+
+**Pendiente de esta fase:** repetir la medición en las pantallas reales (Libro mayor, Clientes) contra el backend real y comparar `EXPLAIN (ANALYZE, BUFFERS)` (Fase 0); medir el ordenar (el arnés solo cubre paginar); decidir F4 (separar `isFetching` de `isLoading`) si se quiere atenuar la tabla durante el refetch.
+**Riesgo conocido y a probar a mano:** clics muy rápidos en "siguiente" lanzan una petición por clic separado más de 60 ms (antes se fusionaban en una); SWR descarta las respuestas viejas, solo hay más tráfico.

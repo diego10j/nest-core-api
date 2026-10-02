@@ -2,6 +2,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
+import compression from 'compression';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
 
@@ -16,6 +17,10 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   app.setGlobalPrefix('api');
+
+  // Compresión gzip de respuestas JSON grandes (listados de DataTableQuery de hasta cientos de filas).
+  // Umbral 1 KB; los binarios ya comprimidos (PDF, imágenes) no se recomprimen.
+  app.use(compression({ threshold: 1024 }));
 
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
