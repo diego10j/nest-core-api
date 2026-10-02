@@ -102,3 +102,28 @@ Antes de cambiar nada, 10 de 13 pasaban y 3 fallaban por el bug B5 (confirmado).
 | B8 índices `pg_trgm` | Pendiente | Requiere medir en las tablas reales (Fase 4). |
 
 Siguiente: Fase 2 (front, renders: F1–F5).
+
+## 9. Avance – Fase 2 front (rama `claude/front-dtq-renders`) y arnés de medición
+
+**Arnés de medición (nuevo, sin tocar el código de la app):** `scripts/perf/dtq-mock-server.js` (backend simulado con datos reales de la tabla de pruebas `dtq_item`) y `scripts/perf/dtq-medir-front.js` (Playwright: inicia sesión con un token falso, abre `/dashboard/ventas/facturacion/list`, pulsa "siguiente" 5 veces y mide ms hasta ver las filas nuevas y commits de React vía `__REACT_DEVTOOLS_GLOBAL_HOOK__`).
+Cómo repetirlo: crear `.env.local` en el front con `VITE_SERVER_URL=http://127.0.0.1:3999` (+ `VITE_FORMAT_*`), `node scripts/perf/dtq-mock-server.js`, `yarn build && yarn preview --port 18081` y `PORT=18081 node scripts/perf/dtq-medir-front.js`.
+Importante: medir contra el **build de producción** (`yarn preview`); en `yarn dev` React corre en modo desarrollo y los tiempos no son representativos.
+
+**Qué se cambió (front, 3 archivos):**
+| Punto | Cambio |
+|---|---|
+| F1/F2 | `data`, `totalRecords`, `totalFilterRecords`, `paginationResponse` y `lazy` se derivan de `dataResponse` en el mismo render (antes: 5 `useState` copiados en un efecto → un render extra de toda la tabla por respuesta). Se conserva la semántica anterior: una respuesta sin `rows` no borra lo mostrado, y las filas no se exponen hasta que el primer efecto cargó `columns`/`primaryKey` (filas y columnas aparecen juntas). |
+| Espera al paginar/ordenar | `updateParams` acepta un número de ms; paginar y ordenar usan 60 ms en vez de los 300 ms del debounce general (que se sentían como lentitud). Filtros y búsqueda conservan su comportamiento. |
+| F3, F4, F5 | **No se tocaron**: la medición mostró que no son el cuello de botella (una sola petición por interacción, 0 renders en reposo) y F4 cambia la UI de carga. |
+
+**Resultados (build de producción, 2 rondas, red local de ~10 ms):**
+| Métrica | Antes | Después |
+|---|---|---|
+| Clic en "siguiente" → filas nuevas visibles | ~500 ms | ~245 ms (**−50 %**) |
+| Commits de React por cambio de página (dev) | 10–14 | 9–12 (−1) |
+| Peticiones por interacción | 1 | 1 |
+| Commits en reposo (3 s sin interacción) | 0 | 0 |
+En el servidor real habrá además la latencia de red y de la consulta: el ahorro fijo de ~255 ms por interacción se mantiene.
+
+**Pendiente de esta fase:** repetir la medición en las pantallas reales (Libro mayor, Clientes) contra el backend real y comparar `EXPLAIN (ANALYZE, BUFFERS)` (Fase 0); medir el ordenar (el arnés solo cubre paginar); decidir F4 (separar `isFetching` de `isLoading`) si se quiere atenuar la tabla durante el refetch.
+**Riesgo conocido y a probar a mano:** clics muy rápidos en "siguiente" lanzan una petición por clic separado más de 60 ms (antes se fusionaban en una); SWR descarta las respuestas viejas, solo hay más tráfico.
