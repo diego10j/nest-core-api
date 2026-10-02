@@ -11,7 +11,6 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
-import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 import { GetProductoDto } from './dto/get-productos.dto';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
@@ -59,19 +58,6 @@ export class ConfigPreciosProductosService extends BaseService {
     query.addIntParam(5, dtoIn.ideEmpr);
     query.addIntParam(6, dtoIn.ideSucu);
     return this.dataSource.createSelectQuery(query);
-  }
-
-  async generarConfigPreciosVenta(dtoIn: GeneraConfigPreciosVentaDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
-        SELECT f_generar_config_precios($1, $2, $3, $4, $5) AS total`);
-    query.addParam(1, dtoIn.ideEmpr);
-    query.addParam(2, dtoIn.ide_inarti);
-    query.addParam(3, dtoIn.fechaInicio);
-    query.addParam(4, dtoIn.fechaFin);
-    query.addParam(5, dtoIn.login);
-    const rows = (await this.dataSource.createSelectQuery(query)) as { total: number }[];
-    // Cantidad de configuraciones creadas (rangos continuos por forma de pago).
-    return { message: 'ok', total: Number(rows?.[0]?.total ?? 0) };
   }
 
   async getConfigPreciosProducto(dtoIn: GetConfigPrecioProductoDto & HeaderParamsDto) {

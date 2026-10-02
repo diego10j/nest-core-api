@@ -18,7 +18,6 @@ import { AplicarConfigPreciosIaDto, ProponerConfigPreciosIaDto } from './dto/con
 import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
-import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { GetCatalogoProductosDto } from './dto/get-catalogo-productos.dto';
 import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
@@ -334,16 +333,6 @@ export class ProductosController {
   @Auth()
   getPrecioVentaProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PrecioVentaProductoDto) {
     return this.configPrecios.getPrecioVentaProducto({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Post('generarConfigPreciosVenta')
-  @ApiOperation({ summary: 'Generar configuración de precios de venta para un producto' })
-  @Auth()
-  generarConfigPreciosVenta(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GeneraConfigPreciosVentaDto) {
-    return this.configPrecios.generarConfigPreciosVenta({
       ...headersParams,
       ...dtoIn,
     });
