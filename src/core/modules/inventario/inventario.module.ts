@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 
 import { CoreService } from '../../core.service';
 import { IntegrationModule } from '../../integration/integration.module';
+import { CuentasPorPagarModule } from '../cuentas-por-pagar/cuentas-por-pagar.module';
 import { AuditService } from '../audit/audit.service';
 import { FileTempService } from '../sistema/files/file-temp.service';
 import { FilesService } from '../sistema/files/files.service';
@@ -41,7 +42,7 @@ import { ProductosController } from './productos/productos.controller';
 import { ProductosService } from './productos/productos.service';
 
 @Module({
-  imports: [ConfigModule, IntegrationModule],
+  imports: [ConfigModule, IntegrationModule, CuentasPorPagarModule],
   controllers: [
     ProductosController,
     ProductosConsultaIaController,

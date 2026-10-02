@@ -4,6 +4,7 @@ import { ObjectQueryDto } from 'src/core/connection/dto';
 import { DeleteQuery } from 'src/core/connection/helpers';
 import { GptService } from 'src/core/integration/gpt/gpt.service';
 import { CoreService } from 'src/core/core.service';
+import { DocumentosCxPService } from 'src/core/modules/cuentas-por-pagar/documentos-cxp.service';
 
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
@@ -183,6 +184,7 @@ export class ConfigPreciosIaService {
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
     private readonly gpt: GptService,
+    private readonly cxp: DocumentosCxPService,
   ) {}
 
   /** Líneas de factura del producto con costo PPMP y precio neto sin IVA, ya depuradas de traspasos. */
@@ -209,7 +211,12 @@ export class ConfigPreciosIaService {
           (CASE WHEN cdf.iva_inarti_ccdfa = -1
                 THEN (cdf.total_ccdfa / cdf.cantidad_ccdfa)
                      / (1 + COALESCE(NULLIF(CASE WHEN cf.tarifa_iva_cccfa > 1 THEN cf.tarifa_iva_cccfa / 100
-                                                 ELSE cf.tarifa_iva_cccfa END, 0), 0.15))
+                                                 ELSE cf.tarifa_iva_cccfa END, 0),
+                                      -- sin tarifa en la factura: la vigente a su fecha de emisión
+                                      (SELECT i.porcentaje_cnpim FROM con_porcen_impues i
+                                        WHERE cf.fecha_emisi_cccfa BETWEEN i.fecha_desde_cnpim AND i.fecha_fin_cnpim
+                                          AND i.activo_cnpim = TRUE
+                                        ORDER BY i.fecha_desde_cnpim DESC LIMIT 1)))
                 ELSE cdf.total_ccdfa / cdf.cantidad_ccdfa END)::float8 AS precio,
           ppmp.costo_unitario::float8 AS costo,
           (iart.hace_kardex_inarti IS TRUE
@@ -247,7 +254,7 @@ export class ConfigPreciosIaService {
       cantidad: Number(f.cantidad),
       precio: Number(f.precio),
       costo: Number(f.costo) || 0,
-      valida: f.valida === true,
+      valida: f.valida === true && f.precio !== null && f.precio !== undefined,
     }));
   }
 
@@ -546,6 +553,8 @@ export class ConfigPreciosIaService {
       tipos_de_pago: resumen,
     };
 
+    // Tarifa de IVA vigente hoy (con_porcen_impues), la misma que usa el resto del ERP.
+    const tarifaIva = await this.cxp.getPorcentajeIva(new Date().toLocaleDateString('en-CA'));
     const costoActual = await this.costoActual(dtoIn.ide_inarti, Number(dtoIn.ideEmpr), Number(dtoIn.ideSucu));
 
     let respuesta: RespuestaIa;
@@ -827,6 +836,7 @@ export class ConfigPreciosIaService {
       unidad: prod.siglas_inuni,
       periodo: { fechaInicio: dtoIn.fechaInicio, fechaFin: dtoIn.fechaFin },
       costoActual: r4(costoActual),
+      tarifaIva,
       lineasAnalizadas: validas.length,
       lineasDescartadas: lineas.length - validas.length,
       resumen: respuesta.resumen,

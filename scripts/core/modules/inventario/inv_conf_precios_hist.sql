@@ -57,13 +57,23 @@ CREATE OR REPLACE FUNCTION f_inv_conf_precios_equivalencias(
     p_porcentaje numeric,
     p_precio     numeric,
     p_incluye_iva boolean,
-    p_tarifa_iva numeric DEFAULT 0.15
+    p_tarifa_iva numeric DEFAULT NULL   -- NULL = la vigente hoy en con_porcen_impues
 ) RETURNS TABLE (costo numeric, utilidad_pct numeric, precio_sin_iva numeric)
 LANGUAGE plpgsql AS $$
 DECLARE
     v_costo numeric;
     v_precio numeric;
+    v_iva numeric := p_tarifa_iva;
 BEGIN
+    -- Tarifa de IVA vigente hoy (misma consulta que f_calcular_precio_venta); nunca se asume un valor fijo
+    IF v_iva IS NULL AND COALESCE(p_incluye_iva, false) THEN
+        SELECT porcentaje_cnpim INTO v_iva
+        FROM con_porcen_impues
+        WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+          AND activo_cnpim = TRUE
+        ORDER BY fecha_desde_cnpim DESC LIMIT 1;
+    END IF;
+
     BEGIN
         SELECT p.costo_unitario INTO v_costo
         FROM f_costo_unitario_ppmp(p_ide_empr, COALESCE(p_ide_sucu, 0), p_ide_inarti, CURRENT_DATE) p
@@ -77,7 +87,7 @@ BEGIN
     END IF;
 
     IF p_precio IS NOT NULL THEN
-        v_precio := p_precio / CASE WHEN COALESCE(p_incluye_iva, false) THEN 1 + p_tarifa_iva ELSE 1 END;
+        v_precio := p_precio / CASE WHEN COALESCE(p_incluye_iva, false) THEN 1 + COALESCE(v_iva, 0) ELSE 1 END;
         RETURN QUERY SELECT v_costo,
                             CASE WHEN v_costo IS NULL THEN NULL ELSE round(((v_precio - v_costo) / v_costo) * 100, 2) END,
                             round(v_precio, 4);

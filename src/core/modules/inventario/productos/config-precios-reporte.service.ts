@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { DocumentosCxPService } from 'src/core/modules/cuentas-por-pagar/documentos-cxp.service';
 import { UpdateQuery } from 'src/core/connection/helpers';
 
 import { DataSourceService } from '../../../connection/datasource.service';
@@ -8,15 +9,16 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CambiarEstadoConfigPreciosDto } from './dto/cambiar-estado-config-precios.dto';
 import { HistorialConfigPreciosDto, ResumenHistorialConfigPreciosDto } from './dto/historial-config-precios.dto';
 
-/** Tarifa de IVA con la que se estima el precio sin IVA de las configuraciones que lo incluyen. */
-const TARIFA_IVA = 0.15;
 const MENSAJE_SIN_HISTORIAL =
   'Falta crear el historial: ejecuta el script scripts/core/modules/inventario/inv_conf_precios_hist.sql';
 
 /** Reporte / dashboard de monitoreo de las configuraciones de precios de venta y su historial de cambios. */
 @Injectable()
 export class ConfigPreciosReporteService {
-  constructor(private readonly dataSource: DataSourceService) {}
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly cxp: DocumentosCxPService,
+  ) {}
 
   /**
    * Todas las configuraciones de la empresa con su producto, forma de pago y —con el costo promedio (PPM) de hoy—
@@ -26,6 +28,8 @@ export class ConfigPreciosReporteService {
   async getReporteConfigPrecios(dtoIn: HeaderParamsDto) {
     const ideEmpr = Number(dtoIn.ideEmpr);
     const ideSucu = Number(dtoIn.ideSucu) || 0;
+    // Tarifa de IVA vigente hoy (con_porcen_impues), la misma que usa el resto del ERP.
+    const tarifaIva = Number(await this.cxp.getPorcentajeIva(new Date().toLocaleDateString('en-CA')));
 
     const qRows = new SelectQuery(`
       WITH costos AS (
@@ -68,13 +72,13 @@ export class ConfigPreciosReporteService {
           k.costo AS costo_actual,
           CASE
               WHEN c.precio_fijo_incpa IS NOT NULL AND k.costo > 0
-                  THEN round((((c.precio_fijo_incpa / CASE WHEN c.incluye_iva_incpa THEN ${1 + TARIFA_IVA} ELSE 1 END) - k.costo)
+                  THEN round((((c.precio_fijo_incpa / CASE WHEN c.incluye_iva_incpa THEN ${1 + tarifaIva} ELSE 1 END) - k.costo)
                               / k.costo * 100)::numeric, 2)::float8
               ELSE c.porcentaje_util_incpa::float8
           END AS utilidad_pct,
           CASE
               WHEN c.precio_fijo_incpa IS NOT NULL
-                  THEN round((c.precio_fijo_incpa / CASE WHEN c.incluye_iva_incpa THEN ${1 + TARIFA_IVA} ELSE 1 END)::numeric, 4)::float8
+                  THEN round((c.precio_fijo_incpa / CASE WHEN c.incluye_iva_incpa THEN ${1 + tarifaIva} ELSE 1 END)::numeric, 4)::float8
               WHEN k.costo > 0 AND c.porcentaje_util_incpa IS NOT NULL
                   THEN round((k.costo * (1 + c.porcentaje_util_incpa / 100))::numeric, 4)::float8
           END AS precio_sin_iva
