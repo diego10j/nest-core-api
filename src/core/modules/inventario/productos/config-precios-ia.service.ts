@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { ObjectQueryDto } from 'src/core/connection/dto';
-import { DeleteQuery } from 'src/core/connection/helpers';
+import { DeleteQuery, UpdateQuery } from 'src/core/connection/helpers';
+import { getCurrentDateTime } from 'src/util/helpers/date-util';
 import { GptService } from 'src/core/integration/gpt/gpt.service';
 import { CoreService } from 'src/core/core.service';
 import { DocumentosCxPService } from 'src/core/modules/cuentas-por-pagar/documentos-cxp.service';
@@ -9,7 +10,14 @@ import { DocumentosCxPService } from 'src/core/modules/cuentas-por-pagar/documen
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 
-import { AplicarConfigPreciosIaDto, ProponerConfigPreciosIaDto } from './dto/config-precios-ia.dto';
+import { evaluarConfiguraciones } from './config-precios-validacion';
+import type { ConfigExistente, ResultadoValidacion } from './config-precios-validacion';
+import { Linea, margenLinea, margenPonderado, mediana, percentil, r2, r4 } from './config-precios-ia.utils';
+import {
+  AplicarConfigPreciosIaDto,
+  ProponerConfigPreciosIaDto,
+  AplicarValidacionConfigPreciosIaDto,
+} from './dto/config-precios-ia.dto';
 
 /** RUC entre los que se hizo el traspaso por cambio de razón social: no son ventas reales. */
 const RUC_EXCLUIDOS = ['1719020883001', '1793234926001'];
@@ -20,16 +28,6 @@ const MAX_EXACTAS_POR_TIPO = 10;
 /** Umbrales frecuentes por tipo de pago, más todas las cantidades realmente vendidas (para anclar las exactas). */
 type Umbrales = Map<number | null, number[]> & { vendidas?: Map<number | null, number[]> };
 const PREFIJO_OBSERVACION = 'Config IA';
-
-type Linea = {
-  tipo: number | null;
-  nombreTipo: string;
-  medio: string;
-  cantidad: number;
-  precio: number;
-  costo: number;
-  valida: boolean;
-};
 
 type TierIa = {
   ide_cncfp: number | null;
@@ -77,31 +75,6 @@ export type ConfigPrecioPropuesta = {
   /** Por qué no se sugiere (solo si sugerida = false). */
   motivo: string | null;
 };
-
-const r2 = (v: number) => Math.round(v * 100) / 100;
-const r4 = (v: number) => Math.round(v * 10000) / 10000;
-
-function mediana(valores: number[]): number {
-  const s = [...valores].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
-
-function percentil(valores: number[], p: number): number {
-  const s = [...valores].sort((a, b) => a - b);
-  if (s.length === 0) return 0;
-  return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))];
-}
-
-const margenLinea = (l: Linea) => ((l.precio - l.costo) / l.costo) * 100;
-
-/**
- * Margen típico del conjunto: mediana de los márgenes de cada línea. No se pondera por cantidad: una venta grande
- * a margen bajo no debe arrastrar al resto (en productos caros las cantidades pequeñas son las de mayor utilidad).
- */
-function margenPonderado(lineas: Linea[]): number {
-  return lineas.length > 0 ? mediana(lineas.map(margenLinea)) : 0;
-}
 
 const ESQUEMA_RESPUESTA = {
   type: 'object',
@@ -207,6 +180,7 @@ export class ConfigPreciosIaService {
           fpg.ide_cncfp AS tipo,
           cp.nombre_cncfp AS nombre_tipo,
           fpg.nombre_cndfp AS medio,
+          fpg.ide_cndfp AS ide_medio,
           cdf.cantidad_ccdfa::float8 AS cantidad,
           (CASE WHEN cdf.iva_inarti_ccdfa = -1
                 THEN (cdf.total_ccdfa / cdf.cantidad_ccdfa)
@@ -250,6 +224,7 @@ export class ConfigPreciosIaService {
     return filas.map<Linea>((f) => ({
       tipo: f.tipo === null || f.tipo === undefined ? null : Number(f.tipo),
       nombreTipo: f.nombre_tipo ?? 'Sin forma de pago',
+      ideMedio: f.ide_medio === null || f.ide_medio === undefined ? null : Number(f.ide_medio),
       medio: f.medio ?? 'Sin forma de pago',
       cantidad: Number(f.cantidad),
       precio: Number(f.precio),
@@ -864,12 +839,22 @@ export class ConfigPreciosIaService {
         ),
       );
 
+    // Producto que ya tiene configuración: se contrasta con las ventas y con la propuesta de la IA
+    let validacion: ResultadoValidacion | null = null;
+    if (dtoIn.validar) {
+      const existentes = await this.obtenerExistentes(dtoIn.ide_inarti, Number(dtoIn.ideEmpr));
+      if (existentes.length > 0) {
+        validacion = evaluarConfiguraciones({ existentes, propuestas, validas, costoActual, tarifaIva, paso });
+      }
+    }
+
     return {
       producto: prod.nombre_inarti,
       unidad: prod.siglas_inuni,
       periodo: { fechaInicio: dtoIn.fechaInicio, fechaFin: dtoIn.fechaFin },
       costoActual: r4(costoActual),
       tarifaIva,
+      validacion,
       lineasAnalizadas: validas.length,
       lineasDescartadas: lineas.length - validas.length,
       resumen: respuesta.resumen,
@@ -889,32 +874,121 @@ export class ConfigPreciosIaService {
     };
   }
 
-  /** Guarda la propuesta (ya revisada por el usuario). Reemplaza solo lo generado antes automáticamente. */
-  async aplicar(dtoIn: AplicarConfigPreciosIaDto & HeaderParamsDto) {
-    dtoIn.configuraciones.forEach((c, i) => {
-      if (c.exacta) {
-        if (c.rango1 <= 0) {
-          throw new BadRequestException(`La cantidad exacta de la configuración ${i + 1} no es válida`);
+  /** Configuraciones vigentes (activas) del producto, para validarlas contra las ventas. */
+  private async obtenerExistentes(ideInarti: number, ideEmpr: number): Promise<ConfigExistente[]> {
+    const q = new SelectQuery(`
+      SELECT c.ide_incpa, c.ide_cncfp, cp.nombre_cncfp, c.ide_cndfp, fp.nombre_cndfp,
+             c.rangos_incpa, c.rango1_cant_incpa::float8 AS rango1, c.rango2_cant_incpa::float8 AS rango2,
+             c.rango_infinito_incpa, c.precio_fijo_incpa::float8 AS precio_fijo,
+             c.porcentaje_util_incpa::float8 AS porcentaje, c.incluye_iva_incpa, c.autorizado_incpa,
+             c.observacion_incpa
+      FROM inv_conf_precios_articulo c
+      LEFT JOIN con_cabece_forma_pago cp ON cp.ide_cncfp = c.ide_cncfp
+      LEFT JOIN con_deta_forma_pago fp ON fp.ide_cndfp = c.ide_cndfp
+      WHERE c.ide_inarti = $1
+        AND c.activo_incpa = true
+        AND (c.ide_empr = ${ideEmpr} OR c.ide_empr IS NULL)
+    `);
+    q.addParam(1, ideInarti);
+    q.setLazy(false);
+    const filas = (await this.dataSource.createSelectQuery(q)) as any[];
+    return filas.map<ConfigExistente>((f) => ({
+      ide_incpa: Number(f.ide_incpa),
+      ide_cncfp: f.ide_cncfp === null || f.ide_cncfp === undefined ? null : Number(f.ide_cncfp),
+      nombre_cncfp: f.nombre_cncfp ?? null,
+      ide_cndfp: f.ide_cndfp === null || f.ide_cndfp === undefined ? null : Number(f.ide_cndfp),
+      nombre_cndfp: f.nombre_cndfp ?? null,
+      rangos: f.rangos_incpa === true,
+      rango1: f.rango1 === null || f.rango1 === undefined ? null : Number(f.rango1),
+      rango2: f.rango2 === null || f.rango2 === undefined ? null : Number(f.rango2),
+      infinito: f.rango_infinito_incpa === true,
+      precio_fijo: f.precio_fijo === null || f.precio_fijo === undefined ? null : Number(f.precio_fijo),
+      porcentaje: f.porcentaje === null || f.porcentaje === undefined ? null : Number(f.porcentaje),
+      incluye_iva: f.incluye_iva_incpa === true,
+      autorizado: f.autorizado_incpa === true,
+      observacion: f.observacion_incpa ?? null,
+    }));
+  }
+
+  /**
+   * Aplica las decisiones del usuario sobre una configuración existente: modificar valores, eliminar y crear.
+   * Solo toca las configuraciones del producto indicado; todo queda en el historial por el trigger.
+   */
+  async aplicarValidacion(dtoIn: AplicarValidacionConfigPreciosIaDto & HeaderParamsDto) {
+    const ops = dtoIn.operaciones;
+    ops.forEach((o, i) => {
+      if (o.accion === 'CREAR') {
+        const c = o.config;
+        if (!c) throw new BadRequestException(`La operación ${i + 1} no trae la configuración a crear`);
+        if (c.exacta) {
+          if (c.rango1 <= 0) throw new BadRequestException(`La cantidad exacta de la operación ${i + 1} no es válida`);
+        } else if (c.rango_infinito ? c.rango2 != null : c.rango2 == null || c.rango2 < c.rango1) {
+          throw new BadRequestException(`El rango de la operación ${i + 1} no es válido`);
         }
-      } else if (c.rango_infinito ? c.rango2 != null : c.rango2 == null || c.rango2 < c.rango1) {
-        throw new BadRequestException(`El rango de la configuración ${i + 1} no es válido`);
+        if (c.modo === 'utilidad' ? c.valor < 0 : c.valor <= 0) {
+          throw new BadRequestException(`El valor de la operación ${i + 1} no es válido`);
+        }
+        return;
       }
-      if (c.modo === 'utilidad' ? c.valor < 0 : c.valor <= 0) {
-        throw new BadRequestException(`El valor de la configuración ${i + 1} no es válido`);
+      if (!o.ide_incpa) throw new BadRequestException(`La operación ${i + 1} no indica la configuración`);
+      if (o.accion === 'MODIFICAR') {
+        if (
+          !o.modo ||
+          o.valor === undefined ||
+          o.valor === null ||
+          (o.modo === 'utilidad' ? o.valor < 0 : o.valor <= 0)
+        ) {
+          throw new BadRequestException(`El nuevo valor de la operación ${i + 1} no es válido`);
+        }
       }
     });
 
-    const borrar = new DeleteQuery('inv_conf_precios_articulo');
-    borrar.where = `ide_inarti = $1 AND (observacion_incpa LIKE '${PREFIJO_OBSERVACION}%' OR observacion_incpa LIKE 'Config automática%')`;
-    borrar.addParam(1, dtoIn.ide_inarti);
-    await this.dataSource.createQuery(borrar);
+    const eliminar = ops.filter((o) => o.accion === 'ELIMINAR').map((o) => o.ide_incpa as number);
+    if (eliminar.length > 0) {
+      const borrar = new DeleteQuery('inv_conf_precios_articulo');
+      borrar.where = 'ide_incpa = ANY ($1) AND ide_inarti = $2';
+      borrar.addParam(1, eliminar);
+      borrar.addParam(2, dtoIn.ide_inarti);
+      await this.dataSource.createQuery(borrar);
+    }
 
+    for (const o of ops.filter((x) => x.accion === 'MODIFICAR')) {
+      const upd = new UpdateQuery('inv_conf_precios_articulo', 'ide_incpa', dtoIn);
+      upd.values.set('porcentaje_util_incpa', o.modo === 'utilidad' ? o.valor : null);
+      upd.values.set('precio_fijo_incpa', o.modo === 'fijo' ? o.valor : null);
+      // El precio fijo propuesto es sin IVA
+      if (o.modo === 'fijo') upd.values.set('incluye_iva_incpa', false);
+      upd.values.set('hora_actua', getCurrentDateTime());
+      upd.where = 'ide_incpa = $1 AND ide_inarti = $2';
+      upd.addParam(1, o.ide_incpa);
+      upd.addParam(2, dtoIn.ide_inarti);
+      await this.dataSource.createQuery(upd);
+    }
+
+    const crear = ops.filter((o) => o.accion === 'CREAR').map((o) => o.config!);
+    if (crear.length > 0) {
+      const listQuery = await this.listaInserts(dtoIn, crear);
+      await this.core.save({ ...dtoIn, listQuery, audit: true });
+    }
+
+    return {
+      message: 'ok',
+      creadas: crear.length,
+      modificadas: ops.filter((o) => o.accion === 'MODIFICAR').length,
+      eliminadas: eliminar.length,
+    };
+  }
+
+  /** Inserts de configuraciones nuevas (activas y autorizadas) para core.save. */
+  private async listaInserts(
+    dtoIn: { ide_inarti: number } & HeaderParamsDto,
+    configuraciones: AplicarConfigPreciosIaDto['configuraciones'],
+  ): Promise<ObjectQueryDto[]> {
     const module = 'inv';
     const tableName = 'conf_precios_articulo';
     const primaryKey = 'ide_incpa';
     const listQuery: ObjectQueryDto[] = [];
-
-    for (const c of dtoIn.configuraciones) {
+    for (const c of configuraciones) {
       const ide = await this.dataSource.getSeqTable(`${module}_${tableName}`, primaryKey, 1, dtoIn.login);
       listQuery.push({
         operation: 'insert',
@@ -943,7 +1017,30 @@ export class ConfigPreciosIaService {
         },
       } as ObjectQueryDto);
     }
+    return listQuery;
+  }
 
+  /** Guarda la propuesta (ya revisada por el usuario). Reemplaza solo lo generado antes automáticamente. */
+  async aplicar(dtoIn: AplicarConfigPreciosIaDto & HeaderParamsDto) {
+    dtoIn.configuraciones.forEach((c, i) => {
+      if (c.exacta) {
+        if (c.rango1 <= 0) {
+          throw new BadRequestException(`La cantidad exacta de la configuración ${i + 1} no es válida`);
+        }
+      } else if (c.rango_infinito ? c.rango2 != null : c.rango2 == null || c.rango2 < c.rango1) {
+        throw new BadRequestException(`El rango de la configuración ${i + 1} no es válido`);
+      }
+      if (c.modo === 'utilidad' ? c.valor < 0 : c.valor <= 0) {
+        throw new BadRequestException(`El valor de la configuración ${i + 1} no es válido`);
+      }
+    });
+
+    const borrar = new DeleteQuery('inv_conf_precios_articulo');
+    borrar.where = `ide_inarti = $1 AND (observacion_incpa LIKE '${PREFIJO_OBSERVACION}%' OR observacion_incpa LIKE 'Config automática%')`;
+    borrar.addParam(1, dtoIn.ide_inarti);
+    await this.dataSource.createQuery(borrar);
+
+    const listQuery = await this.listaInserts(dtoIn, dtoIn.configuraciones);
     await this.core.save({ ...dtoIn, listQuery, audit: true });
     return { message: 'ok', total: listQuery.length };
   }

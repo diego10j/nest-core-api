@@ -14,7 +14,11 @@ import { ConfigPreciosReporteService } from './config-precios-reporte.service';
 import { ConfigPreciosProductosService } from './config-precios.service';
 import { CambiarEstadoConfigPreciosDto } from './dto/cambiar-estado-config-precios.dto';
 import { HistorialConfigPreciosDto, ResumenHistorialConfigPreciosDto } from './dto/historial-config-precios.dto';
-import { AplicarConfigPreciosIaDto, ProponerConfigPreciosIaDto } from './dto/config-precios-ia.dto';
+import {
+  AplicarConfigPreciosIaDto,
+  ProponerConfigPreciosIaDto,
+  AplicarValidacionConfigPreciosIaDto,
+} from './dto/config-precios-ia.dto';
 import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
@@ -352,6 +356,16 @@ export class ProductosController {
   @Auth()
   aplicarConfigPreciosIA(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: AplicarConfigPreciosIaDto) {
     return this.configPreciosIa.aplicar({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('aplicarValidacionConfigPreciosIA')
+  @ApiOperation({ summary: 'Aplicar las decisiones sobre la configuración existente (modificar, eliminar, crear)' })
+  @Auth()
+  aplicarValidacionConfigPreciosIA(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: AplicarValidacionConfigPreciosIaDto,
+  ) {
+    return this.configPreciosIa.aplicarValidacion({ ...headersParams, ...dtoIn });
   }
 
   @Get('getConfigPreciosProducto')

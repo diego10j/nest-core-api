@@ -24,6 +24,11 @@ export class ProponerConfigPreciosIaDto {
 
   @IsDateString()
   fechaFin: string;
+
+  /** El producto ya tiene configuración: además de proponer, se valida la existente contra las ventas. */
+  @IsOptional()
+  @IsBoolean()
+  validar?: boolean;
 }
 
 export class ConfigPrecioIaItemDto {
@@ -76,4 +81,41 @@ export class AplicarConfigPreciosIaDto {
   @ValidateNested({ each: true })
   @Type(() => ConfigPrecioIaItemDto)
   configuraciones: ConfigPrecioIaItemDto[];
+}
+
+export class OperacionValidacionDto {
+  @IsIn(['CREAR', 'MODIFICAR', 'ELIMINAR'])
+  accion: 'CREAR' | 'MODIFICAR' | 'ELIMINAR';
+
+  /** MODIFICAR y ELIMINAR: la configuración existente. */
+  @IsOptional()
+  @IsInt()
+  ide_incpa?: number;
+
+  /** MODIFICAR: nuevo tipo y valor (% de utilidad o precio sin IVA). */
+  @IsOptional()
+  @IsIn(['utilidad', 'fijo'])
+  modo?: 'utilidad' | 'fijo';
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  valor?: number;
+
+  /** CREAR: la configuración nueva. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ConfigPrecioIaItemDto)
+  config?: ConfigPrecioIaItemDto;
+}
+
+export class AplicarValidacionConfigPreciosIaDto {
+  @IsInt()
+  ide_inarti: number;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(60)
+  @ValidateNested({ each: true })
+  @Type(() => OperacionValidacionDto)
+  operaciones: OperacionValidacionDto[];
 }
