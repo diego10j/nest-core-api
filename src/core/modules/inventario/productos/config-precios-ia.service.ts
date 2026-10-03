@@ -839,6 +839,88 @@ export class ConfigPreciosIaService {
         ),
       );
 
+    // ── Consolidación de cantidades exactas ──
+    // 1) Una cantidad exacta cuyo precio es casi el de su rango (±1,5 %) no aporta: se quita y el rango toma el
+    //    precio más bajo de los dos (p. ej. $7,00 y $7,01 → $7,00).
+    const ajustarPrecio = (r: ConfigPrecioPropuesta, sinIva: number) => {
+      if (r.modo === 'fijo') {
+        r.valor = r4(sinIva);
+        r.precio_hoy = r.valor;
+        if (costoActual > 0) r.utilidad_pct = r2(((r.valor - costoActual) / costoActual) * 100);
+      } else if (costoActual > 0) {
+        r.valor = r2(((sinIva - costoActual) / costoActual) * 100);
+        r.utilidad_pct = r.valor;
+        r.precio_hoy = r4(costoActual * (1 + r.valor / 100));
+      }
+    };
+    const precioDe = (c: ConfigPrecioPropuesta) => (c.modo === 'fijo' ? c.valor : c.precio_hoy);
+    for (const e of propuestas.filter((p) => p.exacta && p.modo === 'fijo' && p.sugerida)) {
+      const rango = propuestas.find(
+        (r) =>
+          !r.exacta &&
+          r.sugerida &&
+          r.ide_cncfp === e.ide_cncfp &&
+          e.rango1 >= r.rango1 &&
+          (r.rango2 === null || e.rango1 <= r.rango2) &&
+          precioDe(r) !== null &&
+          Math.abs((precioDe(r) as number) - e.valor) / e.valor <= 0.015,
+      );
+      if (!rango) continue;
+      ajustarPrecio(rango, Math.min(precioDe(rango) as number, e.valor));
+      propuestas = propuestas.filter((p) => p !== e);
+      tiers = tiers.filter((t) => !(t.exacta && t.ide_cncfp === e.ide_cncfp && t.desde === e.rango1));
+    }
+
+    // 2) Cantidades exactas consecutivas con el mismo precio fijo (±1 %) se unen en un solo rango anidado dentro de
+    //    la cadena (el motor elige el rango de mayor límite inferior, así que el más específico gana).
+    const tiposExactas = [
+      ...new Set(propuestas.filter((p) => p.exacta && p.modo === 'fijo' && p.sugerida).map((p) => p.ide_cncfp)),
+    ];
+    for (const tipo of tiposExactas) {
+      const lista = propuestas
+        .filter((p) => p.exacta && p.ide_cncfp === tipo && p.sugerida)
+        .sort((x, y) => x.rango1 - y.rango1);
+      let i = 0;
+      while (i < lista.length) {
+        const grupo = [lista[i]];
+        while (
+          i + grupo.length < lista.length &&
+          lista[i + grupo.length].modo === 'fijo' &&
+          grupo[0].modo === 'fijo' &&
+          Math.abs(lista[i + grupo.length].valor - grupo[grupo.length - 1].valor) / grupo[grupo.length - 1].valor <=
+            0.01
+        ) {
+          grupo.push(lista[i + grupo.length]);
+        }
+        const siguiente = lista[i + grupo.length];
+        i += grupo.length;
+        if (grupo.length < 2) continue;
+
+        const desde = grupo[0].rango1;
+        const contenedor = propuestas.find(
+          (r) => !r.exacta && r.ide_cncfp === tipo && desde >= r.rango1 && (r.rango2 === null || desde <= r.rango2),
+        );
+        const hasta = siguiente ? r4(siguiente.rango1 - paso) : (contenedor?.rango2 ?? null);
+        const sinGrupo = tiers.filter(
+          (t) => !(t.exacta && t.ide_cncfp === tipo && grupo.some((g) => g.rango1 === t.desde)),
+        );
+        const unido = calcular(
+          {
+            ide_cncfp: tipo,
+            desde,
+            hasta,
+            patron: 'precio_fijo',
+            exacta: false,
+            razon: `Cantidades consecutivas con el mismo precio fijo (${r2(grupo[0].valor)} sin IVA): un solo rango`,
+          },
+          sinGrupo,
+        );
+        if (!unido || unido.modo !== 'fijo') continue;
+        propuestas = [...propuestas.filter((p) => !grupo.includes(p)), unido];
+        tiers = sinGrupo;
+      }
+    }
+
     // Producto que ya tiene configuración: se contrasta con las ventas y con la propuesta de la IA
     let validacion: ResultadoValidacion | null = null;
     if (dtoIn.validar) {

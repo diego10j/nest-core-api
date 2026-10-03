@@ -102,7 +102,7 @@ export function evaluarConfiguraciones({
   const items: ItemValidacion[] = [];
   const usadas = new Set<ConfigPrecioPropuesta>();
   /** Rangos existentes que se conservan: la IA no debe volver a crear algo que se solape con ellos. */
-  const conservadas: { tipo: number | null; alcance: Alcance }[] = [];
+  const conservadas: { tipo: number | null; alcance: Alcance; sinIva: number | null }[] = [];
 
   const solapan = (a: Alcance, b: Alcance) =>
     a.desde <= (b.hasta ?? Infinity) + mitad && b.desde <= (a.hasta ?? Infinity) + mitad;
@@ -114,7 +114,7 @@ export function evaluarConfiguraciones({
 
   const mismoAlcance = (e: ConfigExistente, a: Alcance, p: ConfigPrecioPropuesta) =>
     e.ide_cndfp === null &&
-    e.ide_cncfp === p.ide_cncfp &&
+    (e.ide_cncfp === null || e.ide_cncfp === p.ide_cncfp) &&
     a.exacta === p.exacta &&
     Math.abs(a.desde - p.rango1) <= paso * 1.01 &&
     (p.exacta ||
@@ -165,11 +165,34 @@ export function evaluarConfiguraciones({
         (al.exacta || !exactas.some((q) => Math.abs(l.cantidad - q) < mitad)),
     );
 
-    const par = propuestas.find((p) => mismoAlcance(e, al, p));
+    /** ¿Lo que propone la IA para el mismo alcance es prácticamente lo mismo que lo que hay hoy? */
+    const esCercano = (p: ConfigPrecioPropuesta) => {
+      const mismaUtilidad =
+        utilidad !== null
+          ? Math.abs(utilidad - p.utilidad_pct) <= TOLERANCIA_UTILIDAD
+          : sinIva !== null && p.precio_hoy !== null && Math.abs(sinIva - p.precio_hoy) / p.precio_hoy <= 0.02;
+      const mismoPrecioFijo =
+        modo === 'fijo' && p.modo === 'fijo'
+          ? Math.abs((sinIvaGuardado as number) - p.valor) / p.valor <= TOLERANCIA_PRECIO_FIJO
+          : true;
+      return mismaUtilidad && mismoPrecioFijo;
+    };
+
+    const candidatos = propuestas.filter((p) => mismoAlcance(e, al, p));
+    let par: ConfigPrecioPropuesta | undefined;
+    if (e.ide_cncfp === null) {
+      // Genérica: la IA propone por tipo de pago. Las propuestas que coinciden con ella quedan cubiertas; las que
+      // difieren se sugieren como configuración propia de ese tipo de pago.
+      const cercanos = candidatos.filter(esCercano);
+      cercanos.forEach((p) => usadas.add(p));
+      par = cercanos[0] ?? [...candidatos].sort((a, b) => b.ventas - a.ventas)[0];
+    } else {
+      par = candidatos[0];
+    }
     if (par) usadas.add(par);
 
     if (ls.length === 0) {
-      conservadas.push({ tipo: e.ide_cncfp, alcance: al });
+      conservadas.push({ tipo: e.ide_cncfp, alcance: al, sinIva });
       items.push({
         accion: 'SIN_DATOS',
         existente,
@@ -201,16 +224,8 @@ export function evaluarConfiguraciones({
     const texto = `${ls.length} venta${ls.length === 1 ? '' : 's'}, margen típico ${r2(margen)} %, consistencia con la actual ${coherencia} %`;
 
     if (par) {
-      const mismaUtilidad =
-        utilidad !== null
-          ? Math.abs(utilidad - par.utilidad_pct) <= TOLERANCIA_UTILIDAD
-          : sinIva !== null && par.precio_hoy !== null && Math.abs(sinIva - par.precio_hoy) / par.precio_hoy <= 0.02;
-      const mismoPrecioFijo =
-        modo === 'fijo' && par.modo === 'fijo'
-          ? Math.abs((sinIvaGuardado as number) - par.valor) / par.valor <= TOLERANCIA_PRECIO_FIJO
-          : true;
-      if (mismaUtilidad && mismoPrecioFijo) {
-        conservadas.push({ tipo: e.ide_cncfp, alcance: al });
+      if (esCercano(par)) {
+        conservadas.push({ tipo: e.ide_cncfp, alcance: al, sinIva });
         items.push({
           ...base,
           accion: 'MANTENER',
@@ -233,7 +248,7 @@ export function evaluarConfiguraciones({
 
     // Sin escalón equivalente en la propuesta de la IA
     if (coherencia >= COHERENCIA_MINIMA) {
-      conservadas.push({ tipo: e.ide_cncfp, alcance: al });
+      conservadas.push({ tipo: e.ide_cncfp, alcance: al, sinIva });
       items.push({
         ...base,
         accion: 'MANTENER',
@@ -244,7 +259,12 @@ export function evaluarConfiguraciones({
     }
 
     const solapadas = propuestas.filter(
-      (p) => !usadas.has(p) && !p.exacta && !al.exacta && p.ide_cncfp === e.ide_cncfp && solapan(al, alcanceDeP(p)),
+      (p) =>
+        !usadas.has(p) &&
+        !p.exacta &&
+        !al.exacta &&
+        (e.ide_cncfp === null || p.ide_cncfp === e.ide_cncfp) &&
+        solapan(al, alcanceDeP(p)),
     );
     if (solapadas.length > 0) {
       items.push({
@@ -290,8 +310,20 @@ export function evaluarConfiguraciones({
   for (const p of propuestas) {
     if (usadas.has(p)) continue;
     const ap = alcanceDeP(p);
-    const cubierta =
-      !p.exacta && conservadas.some((c) => c.tipo === p.ide_cncfp && !c.alcance.exacta && solapan(c.alcance, ap));
+    const tipoCubre = (c: { tipo: number | null }) => c.tipo === null || c.tipo === p.ide_cncfp;
+    const cubierta = p.exacta
+      ? // Una cantidad exacta ya está cubierta si un rango que se conserva la contiene y da casi el mismo precio
+        conservadas.some(
+          (c) =>
+            tipoCubre(c) &&
+            !c.alcance.exacta &&
+            c.alcance.desde - mitad <= p.rango1 &&
+            (c.alcance.hasta === null || p.rango1 <= c.alcance.hasta + mitad) &&
+            c.sinIva !== null &&
+            p.precio_hoy !== null &&
+            Math.abs(c.sinIva - p.precio_hoy) / p.precio_hoy <= 0.02,
+        )
+      : conservadas.some((c) => tipoCubre(c) && !c.alcance.exacta && solapan(c.alcance, ap));
     if (cubierta) continue;
     items.push({
       accion: 'CREAR',
