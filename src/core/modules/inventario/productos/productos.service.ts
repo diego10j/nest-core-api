@@ -169,11 +169,29 @@ export class ProductosService extends BaseService {
             a.ide_incate,
             siglas_inuni,
             decim_stock_inarti,
-            COALESCE((SELECT COUNT(*) FROM inv_conf_precios_articulo cp WHERE cp.ide_inarti = a.ide_inarti), 0) AS num_conf_precios
+            COALESCE((SELECT COUNT(*) FROM inv_conf_precios_articulo cp WHERE cp.ide_inarti = a.ide_inarti), 0) AS num_conf_precios,
+            COALESCE((SELECT COUNT(*) FROM inv_conf_precios_articulo cp
+                       WHERE cp.ide_inarti = a.ide_inarti AND cp.activo_incpa = true AND cp.autorizado_incpa = true), 0) AS num_conf_activas,
+            -- Documentos técnicos ya extraídos a la base de conocimiento (los que el chat usa como fuente)
+            COALESCE(doc.coas, 0)::int AS docs_coa,
+            COALESCE(doc.fichas, 0)::int AS docs_ficha,
+            COALESCE(doc.hojas, 0)::int AS docs_hoja,
+            COALESCE(doc.sin_validar, 0)::int AS docs_sin_validar,
+            CASE WHEN COALESCE(doc.coas, 0) > 0 AND COALESCE(doc.fichas, 0) > 0 THEN 'COMPLETO'
+                 WHEN COALESCE(doc.coas, 0) > 0 OR COALESCE(doc.fichas, 0) > 0 OR COALESCE(doc.hojas, 0) > 0 THEN 'PARCIAL'
+                 ELSE 'SIN_DOCUMENTOS' END AS docs_estado
         FROM
             inv_articulo a
             LEFT JOIN inv_unidad UNIDAD ON a.ide_inuni = UNIDAD.ide_inuni
             LEFT JOIN inv_categoria c ON a.ide_incate  = c.ide_incate
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) FILTER (WHERE d.tipo_bddoc = 'CERTIFICADO_ANALISIS' AND d.estado_bddoc IN ('APROBADO', 'REVISION')) AS coas,
+                       COUNT(*) FILTER (WHERE d.tipo_bddoc = 'FICHA_TECNICA' AND d.estado_bddoc IN ('APROBADO', 'REVISION')) AS fichas,
+                       COUNT(*) FILTER (WHERE d.tipo_bddoc = 'HOJA_SEGURIDAD' AND d.estado_bddoc IN ('APROBADO', 'REVISION')) AS hojas,
+                       COUNT(*) FILTER (WHERE d.estado_bddoc IN ('PENDIENTE', 'PROCESANDO', 'ERROR', 'RECHAZADO')) AS sin_validar
+                  FROM bdt_documento d
+                 WHERE d.ide_inarti = a.ide_inarti AND d.ide_empr = a.ide_empr
+            ) doc ON TRUE
         WHERE
             a.ide_intpr = 1 -- solo productos
             AND a.nivel_inarti = 'HIJO'
