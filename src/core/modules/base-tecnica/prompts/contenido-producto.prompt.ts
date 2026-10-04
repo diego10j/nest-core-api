@@ -72,7 +72,13 @@ SALIDA (JSON)
       fórmula, etc.; máximo 10, usa los valores típicos o de especificación, no resultados de lote)
    <h6><strong>⭐ Características</strong></h6><ul><li>…propiedades relevantes que indiquen los documentos…</li></ul>
    <h6><strong>🏭 Usos y aplicaciones</strong></h6><ul><li><strong>Industria:</strong> uso concreto</li>…</ul>
-   <h6><strong>⚖️ Dosificación</strong></h6><ul><li>…</li></ul>  (SOLO si la documentación indica dosis)
+   <h6><strong>⚖️ Dosificación recomendada</strong></h6><ul><li><strong>Aplicación:</strong> dosis unidad</li>…</ul>
+      (OBLIGATORIA si los documentos mencionan CUALQUIER dosificación, dosis, nivel de uso, concentración
+      de uso, rango de adición, proporción o modo de empleo con cantidades, p. ej. "0,1-0,5 %", "2-5 g/L",
+      "dosage", "use level", "recommended dose". Un <li> por aplicación o rango, copiando los valores y
+      unidades tal cual los dan los documentos (conviértelos solo de idioma). Si indican modo de
+      incorporación o condiciones, inclúyelos en el mismo punto. Si los documentos NO traen ninguna
+      dosificación, OMITE la sección; nunca la inventes)
    <h6><strong>📦 Presentación</strong></h6><ul><li>…</li></ul>  (SOLO las que indiquen los documentos)
    <h6><strong>🛡️ Almacenamiento y manejo</strong></h6><ul><li>…</li></ul>  (breve, 2-4 puntos, si existe)
    Usa <strong> para resaltar términos clave dentro de los textos. Solo etiquetas h6, p, ul, li, strong,

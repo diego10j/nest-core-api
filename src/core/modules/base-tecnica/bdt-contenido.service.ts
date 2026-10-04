@@ -18,7 +18,8 @@ import {
 const TEMAS_CONTENIDO =
   'descripcion aplicaciones usos funciones dosificacion dosis presentacion empaque especificaciones ' +
   'propiedades caracteristicas almacenamiento identificacion composicion description applications uses ' +
-  'dosage packaging specifications properties storage';
+  'dosage dosing recommended dose use level packaging specifications properties storage ' +
+  'dosificacion recomendada nivel de uso concentracion de uso modo de empleo proporcion';
 
 const MAX_OTROS_NOMBRES = 3;
 
