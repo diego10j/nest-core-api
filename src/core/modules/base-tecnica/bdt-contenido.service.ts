@@ -23,6 +23,14 @@ const TEMAS_CONTENIDO =
 
 const MAX_OTROS_NOMBRES = 3;
 
+/** Términos de dosificación (sin tildes) en español e inglés; sirve para Postgres (~*) y JS. */
+const PATRON_DOSIFICACION_SQL =
+  'dosific|dosis|dosage|dosing|dose|use level|usage level|use rate|addition rate|recommended use|' +
+  'suggested use|niveles? de uso|concentracion de uso|modo de empleo|modo de uso|forma de uso|' +
+  'como usar|how to use|directions for use|tasa de uso|proporcion de uso|recomendado de uso';
+const MAX_FRAGMENTO_DOSIS = 1200;
+const MAX_TOTAL_DOSIS = 9000;
+
 /**
  * "Generar Contenido" de Editar Producto: redacta descripción corta, descripción larga (HTML) y otros
  * nombres a partir de la base técnica del producto. Si el producto no tiene documentos técnicos
@@ -51,11 +59,13 @@ export class BdtContenidoService {
     if (!docs.length) return { con_base_tecnica: false };
 
     const sinonimos = await this.sinonimosDocumentos(dto.ide_inarti, dto.ideEmpr, producto.nombre);
+    const fragmentosDosis = await this.fragmentosDosificacion(docs);
+    const textoIa = fragmentosDosis ? `${texto}\n\n${fragmentosDosis}` : texto;
 
     const { datos, tokensEntrada, tokensSalida } = await this.ia.completarJson<ContenidoProductoIa>(
       [
         { role: 'system', content: promptContenidoProducto(sinonimos, dto.complementar === true) },
-        { role: 'user', content: texto },
+        { role: 'user', content: textoIa },
       ],
       SCHEMA_CONTENIDO_PRODUCTO as unknown as Record<string, unknown>,
       'contenido_producto',
@@ -86,6 +96,40 @@ export class BdtContenidoService {
       faltantes: datos.faltantes ?? [],
       complementado: dto.complementar === true,
     };
+  }
+
+  /**
+   * Búsqueda dedicada de dosificación en TODAS las secciones de TODOS los documentos del producto
+   * (español e inglés), independiente del recorte de contexto. Devuelve los fragmentos hallados
+   * etiquetados por documento, o '' si no hay ninguno.
+   */
+  private async fragmentosDosificacion(docs: { ide_bddoc: number; etiqueta: string }[]): Promise<string> {
+    const r = await this.dataSource.pool.query(
+      `SELECT ide_bddoc, titulo_bdsec, contenido_bdsec, pagina_desde_bdsec
+         FROM bdt_seccion
+        WHERE ide_bddoc = ANY($1)
+          AND bdt_f_unaccent(COALESCE(titulo_bdsec, '') || ' ' || COALESCE(contenido_bdsec, '')) ~* $2
+        ORDER BY ide_bddoc, numero_bdsec NULLS LAST, ide_bdsec`,
+      [docs.map((d) => d.ide_bddoc), PATRON_DOSIFICACION_SQL],
+    );
+    const regex = new RegExp(PATRON_DOSIFICACION_SQL, 'i');
+    const bloques: string[] = [];
+    let usado = 0;
+    for (const s of r.rows) {
+      const contenido: string = s.contenido_bdsec ?? '';
+      const sinTildes = contenido.normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const m = regex.exec(sinTildes) ?? regex.exec(`${s.titulo_bdsec ?? ''}`);
+      const pos = m && sinTildes.length === contenido.length ? m.index : 0;
+      const fragmento = contenido.slice(Math.max(0, pos - 300), pos + MAX_FRAGMENTO_DOSIS).trim();
+      const etiqueta = docs.find((d) => d.ide_bddoc === s.ide_bddoc)?.etiqueta ?? '?';
+      const bloque = `[${etiqueta}${s.pagina_desde_bdsec ? ` p.${s.pagina_desde_bdsec}` : ''}] ${s.titulo_bdsec ?? ''}:\n${fragmento}`;
+      if (usado + bloque.length > MAX_TOTAL_DOSIS) break;
+      bloques.push(bloque);
+      usado += bloque.length;
+    }
+    return bloques.length
+      ? `FRAGMENTOS CON POSIBLE DOSIFICACIÓN (buscados en todos los documentos del producto):\n${bloques.join('\n')}`
+      : '';
   }
 
   /** Sinónimos registrados en la base técnica (aprobados primero), sin el nombre del ERP. */
